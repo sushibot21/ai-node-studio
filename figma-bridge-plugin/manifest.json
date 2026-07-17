@@ -1,0 +1,13 @@
+{
+  "name": "Node Studio Bridge",
+  "id": "node-studio-bridge",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": ["*"],
+    "reasoning": "Polls the local Node Studio server for redesign build jobs and reports results."
+  }
+}

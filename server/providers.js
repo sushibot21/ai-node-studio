@@ -2,7 +2,19 @@
 // and returns a normalized { text } (or { imageBase64 } for image nodes).
 // Add a new provider by writing one function here and registering it below.
 
-async function callAnthropic({ model, systemPrompt, input, temperature }) {
+// Builds the user message content, attaching a screenshot as an image block when
+// one is provided (data URL) so analysis/redesign can be grounded in what the
+// page actually looks like, not just its DOM.
+function anthropicContent(input, image) {
+  const match = typeof image === "string" && /^data:(image\/[a-zA-Z+]+);base64,(.+)$/s.exec(image);
+  if (!match) return input;
+  return [
+    { type: "image", source: { type: "base64", media_type: match[1], data: match[2] } },
+    { type: "text", text: input }
+  ];
+}
+
+async function callAnthropic({ model, systemPrompt, input, temperature, image }) {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -12,10 +24,13 @@ async function callAnthropic({ model, systemPrompt, input, temperature }) {
     },
     body: JSON.stringify({
       model: model || "claude-sonnet-4-6",
-      max_tokens: 2048,
+      // Structured UX findings / redesign specs routinely exceed 2k tokens; a
+      // low cap truncates the JSON mid-structure and it fails to parse. 8k gives
+      // the reasoning nodes room to return complete JSON.
+      max_tokens: 8192,
       temperature: temperature ?? 1,
       system: systemPrompt || undefined,
-      messages: [{ role: "user", content: input }]
+      messages: [{ role: "user", content: anthropicContent(input, image) }]
     })
   });
   const data = await res.json();

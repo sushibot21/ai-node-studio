@@ -80,11 +80,19 @@ html, body, #root { height: 100%; margin: 0; background: radial-gradient(ellipse
 .chat-mark { display: inline-block; width: 13px; height: 10px; border: 1.5px solid currentColor; border-radius: 5px; position: relative; vertical-align: middle; }
 .chat-mark::after { content: ""; position: absolute; left: 2px; bottom: -4px; width: 4px; height: 4px; border-left: 1.5px solid currentColor; transform: skewY(-35deg); }
 .guided-history { margin-top: 46px; display: flex; flex-direction: column; gap: 3px; max-height: 260px; overflow: auto; }
-.guided-history > div { display: flex; align-items: center; justify-content: space-between; color: #686868; font-size: 9px; letter-spacing: .12em; padding: 0 5px 6px; }
-.guided-history > div button { border: 0; background: transparent; color: #969696; font-size: 17px; cursor: pointer; line-height: 12px; }
-.guided-history > button { display: flex; align-items: center; gap: 9px; width: 100%; border: 1px solid transparent; padding: 8px; border-radius: 7px; color: #888; background: transparent; font: 11px inherit; text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.guided-history > button:hover, .guided-history > button.active { color: var(--text); background: #1b1b1b; border-color: #292929; }
-.guided-history > button.active .chat-mark { color: var(--accent); }
+.guided-history > div:first-child { display: flex; align-items: center; justify-content: space-between; color: #686868; font-size: 9px; letter-spacing: .12em; padding: 0 5px 6px; }
+.guided-history > div:first-child button { border: 0; background: transparent; color: #969696; font-size: 17px; cursor: pointer; line-height: 12px; }
+/* Conversation row: title button + hover-revealed rename/delete actions. */
+.history-item { display: flex; align-items: center; border: 1px solid transparent; border-radius: 7px; }
+.history-item:hover, .history-item.active { background: #1b1b1b; border-color: #292929; }
+.history-item.active .chat-mark { color: var(--accent); }
+.history-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px; border: 0; padding: 8px; border-radius: 7px; color: #888; background: transparent; font: 11px inherit; text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.history-item:hover .history-open, .history-item.active .history-open { color: var(--text); }
+.history-actions { display: none; align-items: center; gap: 2px; padding-right: 5px; }
+.history-item:hover .history-actions { display: flex; }
+.history-actions button { border: 0; background: transparent; color: #7a7a7a; font-size: 12px; line-height: 1; padding: 4px; border-radius: 5px; cursor: pointer; }
+.history-actions button:hover { color: var(--text); background: #262626; }
+.history-rename { flex: 1; min-width: 0; margin: 2px; padding: 6px 8px; border: 1px solid var(--accent); border-radius: 6px; background: #101010; color: var(--text); font: 11px inherit; outline: 0; }
 .guided-hint { margin-top: auto; color: #777; font-size: 11px; line-height: 1.55; border-top: 1px solid #252525; padding-top: 15px; }
 .guided-chat { width: min(820px, calc(100vw - 320px)); margin: 0 auto; padding: 110px 0 44px; display: flex; flex-direction: column; min-height: 100vh; }
 .guided-title span { font-size: 10px; color: var(--accent); letter-spacing: .16em; font-weight: 700; }
@@ -94,8 +102,24 @@ html, body, #root { height: 100%; margin: 0; background: radial-gradient(ellipse
 .chat-bubble { max-width: 76%; padding: 13px 15px; border-radius: 13px; line-height: 1.5; font-size: 14px; white-space: pre-wrap; }
 .chat-bubble.assistant { align-self: flex-start; background: #171717; border: 1px solid #282828; }
 .chat-bubble.user { align-self: flex-end; background: #2b1b13; border: 1px solid #5a3524; }
+.report-cta { align-self: flex-start; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 2px; padding: 10px 12px; border: 1px solid #2f2a24; border-radius: 12px; background: #17140f; }
+.report-cta span { color: var(--accent); font-size: 12px; font-weight: 600; margin-right: 4px; }
+.report-cta .btn { padding: 6px 12px; font-size: 12px; }
 .chat-composer { display: flex; gap: 10px; align-items: flex-end; padding: 10px; background: #151515; border: 1px solid #303030; border-radius: 15px; box-shadow: 0 20px 45px rgba(0,0,0,.25); }
 .chat-composer textarea { flex: 1; min-height: 55px; max-height: 180px; resize: vertical; background: transparent; color: var(--text); border: 0; outline: 0; padding: 8px; font: inherit; }
+.composer-actions { display: flex; align-items: center; gap: 8px; }
+.btn.stop { background: #2a1414; border-color: #7a2b2b; color: #f0b8b8; font-weight: 600; }
+.btn.stop:hover { border-color: #d05050; }
+
+/* Animated "thinking" bubble shown while the model works. */
+.chat-bubble.thinking { display: flex; flex-direction: column; gap: 5px; }
+.thinking-head { display: flex; align-items: center; gap: 9px; font-weight: 600; color: var(--text); }
+.thinking-sub { color: #888; font-size: 12px; }
+.thinking-dots { display: inline-flex; gap: 4px; }
+.thinking-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); display: inline-block; animation: thinking-bounce 1.2s infinite ease-in-out both; }
+.thinking-dots i:nth-child(1) { animation-delay: -.24s; }
+.thinking-dots i:nth-child(2) { animation-delay: -.12s; }
+@keyframes thinking-bounce { 0%, 80%, 100% { transform: scale(.5); opacity: .4; } 40% { transform: scale(1); opacity: 1; } }
 @media (max-width: 760px) { .guided-shell { grid-template-columns: 1fr; } .guided-rail { display: none; } .guided-chat { width: min(100% - 32px, 820px); padding-top: 64px; } }
 
 .topbar {
@@ -124,6 +148,8 @@ html, body, #root { height: 100%; margin: 0; background: radial-gradient(ellipse
   cursor: pointer;
 }
 .btn:hover { border-color: var(--accent); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn:disabled:hover { border-color: var(--border); }
 .btn.primary { background: var(--accent); color: #20120b; font-weight: 700; border: none; }
 .btn.primary:hover { opacity: 0.9; }
 
@@ -207,3 +233,16 @@ html, body, #root { height: 100%; margin: 0; background: radial-gradient(ellipse
 .settings-modal h3 { margin-top: 0; }
 .assistant-task { width: 100%; min-height: 130px; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 8px; font: inherit; margin-bottom: 10px; resize: vertical; }
 .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+
+/* UX Review — lens selector on the UX Analysis node */
+.lens-grid { display: grid; grid-template-columns: 1fr; gap: 3px; max-height: 168px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 6px; background: var(--bg); }
+.lens-item { display: flex; align-items: center; gap: 6px; color: var(--text); font-size: 11px; cursor: pointer; }
+.lens-item input { width: auto; }
+
+/* Figma MCP capability audit chips on the Figma Redesign node */
+.figma-caps { display: flex; flex-wrap: wrap; gap: 4px; border: 1px solid var(--border); border-radius: 6px; padding: 7px; background: var(--bg); }
+.figma-caps .cap { font-size: 10px; padding: 2px 6px; border-radius: 5px; border: 1px solid var(--border); }
+.figma-caps .cap.ok { color: var(--ok); border-color: rgba(95,214,143,.4); }
+.figma-caps .cap.no { color: var(--text-dim); }
+.figma-caps .cap-note { flex-basis: 100%; color: var(--text-dim); font-size: 10px; margin-top: 2px; }
+.figma-caps .cap-note code { color: var(--accent); }

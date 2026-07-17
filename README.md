@@ -12,6 +12,7 @@ This README is written for someone who may be new to GitHub, coding, Codex, or C
 - Supports Ollama for local models
 - Supports MCP tools
 - Includes a small Figma screen-builder plugin
+- Runs an **autonomous UX Review** — paste a product URL to get a UX audit, accessibility report, editable Figma redesign, and a client-ready PDF (see [UX_REVIEW.md](UX_REVIEW.md))
 
 ## Project Location
 

@@ -11,6 +11,15 @@ const PALETTE = [
   { kind: "output", label: "Output", icon: "↗" }
 ];
 
+// UX Review pipeline blocks (autonomous product audit → redesign → report).
+const UX_PALETTE = [
+  { kind: "webCapture", label: "Web Capture", icon: "◎" },
+  { kind: "uxAnalysis", label: "UX Analysis", icon: "◑" },
+  { kind: "mergeFindings", label: "Merge Findings", icon: "⇲" },
+  { kind: "reportGenerator", label: "Report Generator", icon: "▤" },
+  { kind: "figmaWrite", label: "Figma Redesign", icon: "❖" }
+];
+
 export function Sidebar() {
   const { chats, activeChatId, newChat, selectChat, renameChat } = useGraphStore();
   const onDragStart = (e: React.DragEvent, kind: string) => {
@@ -28,6 +37,17 @@ export function Sidebar() {
       </div>)}</div>
       <h2>Build blocks</h2>
       {PALETTE.map((p) => (
+        <div
+          key={p.kind}
+          className="palette-item"
+          draggable
+          onDragStart={(e) => onDragStart(e, p.kind)}
+        >
+          <span className="palette-icon">{p.icon}</span>{p.label}
+        </div>
+      ))}
+      <h2>UX Review</h2>
+      {UX_PALETTE.map((p) => (
         <div
           key={p.kind}
           className="palette-item"

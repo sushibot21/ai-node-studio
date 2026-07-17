@@ -18,10 +18,21 @@ import { ImageGenNode } from "./nodes/ImageGenNode";
 import { OutputNode } from "./nodes/OutputNode";
 import { IterativeRefinerNode } from "./nodes/IterativeRefinerNode";
 import { MCPToolNode } from "./nodes/MCPToolNode";
+import { WebCaptureNode } from "./nodes/WebCaptureNode";
+import { UXAnalysisNode } from "./nodes/UXAnalysisNode";
+import { MergeFindingsNode } from "./nodes/MergeFindingsNode";
+import { ReportGeneratorNode, openReport } from "./nodes/ReportGeneratorNode";
+import { FigmaWriteNode } from "./nodes/FigmaWriteNode";
+import { buildUXReviewGraph, summarizeUXReview } from "./lib/uxReviewGraph";
+import { buildFlipkartDemo } from "./lib/flipkartDemo";
+import { layoutGraph } from "./lib/layoutGraph";
 import { WorkflowAssistant } from "./components/WorkflowAssistant";
 import { GuidedFlow } from "./components/GuidedFlow";
 import { executeGraph } from "./lib/executeGraph";
-import type { AnyNodeData } from "./lib/types";
+import type { AnyNodeData, UXAudit } from "./lib/types";
+
+// Progress updates streamed to the chat while a workflow runs.
+export type ProgressFn = (p: { stage: string; completed: number; total: number }) => void;
 
 const nodeTypes = {
   textInput: TextInputNode,
@@ -30,7 +41,12 @@ const nodeTypes = {
   imageGen: ImageGenNode,
   output: OutputNode,
   iterativeRefiner: IterativeRefinerNode,
-  mcpTool: MCPToolNode
+  mcpTool: MCPToolNode,
+  webCapture: WebCaptureNode,
+  uxAnalysis: UXAnalysisNode,
+  mergeFindings: MergeFindingsNode,
+  reportGenerator: ReportGeneratorNode,
+  figmaWrite: FigmaWriteNode
 };
 
 function defaultDataFor(kind: string): AnyNodeData {
@@ -55,6 +71,16 @@ function defaultDataFor(kind: string): AnyNodeData {
       return { kind: "iterativeRefiner", provider: "ollama", model: "hermes3:latest", goal: "", rubric: "Correct, clear, complete, and concise.", maxIterations: 4, targetScore: 9, temperature: 0.7 };
     case "mcpTool":
       return { kind: "mcpTool", serverUrl: "", toolName: "", argumentsTemplate: '{"input":"{{input}}"}' };
+    case "webCapture":
+      return { kind: "webCapture", url: "", viewport: "desktop", captureScreenshot: false };
+    case "uxAnalysis":
+      return { kind: "uxAnalysis", provider: "ollama", model: "hermes3:latest", lenses: ["nielsen"], temperature: 0.4 };
+    case "mergeFindings":
+      return { kind: "mergeFindings", provider: "ollama", model: "hermes3:latest" };
+    case "reportGenerator":
+      return { kind: "reportGenerator", title: "", reportUrl: "" };
+    case "figmaWrite":
+      return { kind: "figmaWrite", serverUrl: "", toolName: "", figmaFileUrl: "" };
     default:
       return { kind: "textInput", text: "" };
   }
@@ -69,6 +95,10 @@ function Canvas() {
   const [running, setRunning] = useState(false);
   const [runProgress, setRunProgress] = useState({ completed: 0, current: "", elapsed: 0 });
   const runStartedAt = useRef(0);
+  // Aborts the in-flight workflow run when the user hits Stop in the chat.
+  const abortRef = useRef<AbortController | null>(null);
+  // A Figma link supplied mid-run is queued here and written once the audit ends.
+  const pendingFigmaRef = useRef("");
   const wrapperRef = useRef<HTMLDivElement>(null);
   const rfInstance = useRef<ReactFlowInstance | null>(null);
 
@@ -94,14 +124,20 @@ function Canvas() {
     [addNode]
   );
 
-  const runWorkflow = async (workflowNodes: Node<AnyNodeData>[], workflowEdges: any[]) => {
+  const runWorkflow = async (workflowNodes: Node<AnyNodeData>[], workflowEdges: any[], onProgress?: ProgressFn) => {
+    const controller = new AbortController();
+    abortRef.current = controller;
     setRunning(true);
     runStartedAt.current = Date.now();
     setRunProgress({ completed: 0, current: "Preparing graph", elapsed: 0 });
+    const total = Math.max(workflowNodes.length, 1);
+    let done = 0;
     await executeGraph(workflowNodes, workflowEdges, {
       onNodeStart: (id) => {
         const node = workflowNodes.find((item) => item.id === id);
-        setRunProgress((progress) => ({ ...progress, current: node?.data.label || node?.data.kind || "Processing node" }));
+        const stage = node?.data.label || node?.data.kind || "Processing node";
+        setRunProgress((progress) => ({ ...progress, current: stage }));
+        onProgress?.({ stage, completed: done, total });
         if (node) node.data = { ...node.data, status: "running", error: undefined } as AnyNodeData;
         updateNodeData(id, { status: "running", error: undefined });
       },
@@ -110,21 +146,28 @@ function Canvas() {
         const refined = node?.data;
         if (node) node.data = { ...node.data, status: "done", output, ...(refined?.kind === "iterativeRefiner" ? { history: refined.history } : {}) } as AnyNodeData;
         updateNodeData(id, { status: "done", output, ...(refined?.kind === "iterativeRefiner" ? { history: refined.history } : {}) });
+        done += 1;
         setRunProgress((progress) => ({ ...progress, completed: progress.completed + 1 }));
       },
       onNodeError: (id, error) => {
         const node = workflowNodes.find((item) => item.id === id);
         if (node) node.data = { ...node.data, status: "error", error } as AnyNodeData;
         updateNodeData(id, { status: "error", error });
+        done += 1;
         setRunProgress((progress) => ({ ...progress, completed: progress.completed + 1 }));
       }
-    });
+    }, controller.signal);
     setGraph(workflowNodes, workflowEdges);
     setRunning(false);
+    const stopped = controller.signal.aborted;
+    abortRef.current = null;
+    if (stopped) return "⏹ Stopped. The run was cancelled — any completed steps are kept, and you can send a new message anytime.";
     const outputNode = [...workflowNodes].reverse().find((node) => node.data.kind === "output");
     return outputNode?.data.output || [...workflowNodes].reverse().find((node) => node.data.output)?.data.output || "The workflow finished, but did not return text output.";
   };
   const runGraph = async () => { await runWorkflow(nodes, edges); };
+  // Cancel the in-flight run (from the chat Stop button).
+  const stopRun = () => { abortRef.current?.abort(); };
 
   useEffect(() => {
     if (!running) return;
@@ -136,38 +179,112 @@ function Canvas() {
   const progressPercent = Math.round((runProgress.completed / totalNodes) * 100);
   const etaSeconds = runProgress.completed > 0 ? Math.max(0, Math.round((runProgress.elapsed / runProgress.completed) * (totalNodes - runProgress.completed))) : null;
 
-  const loadSundaraDemo = () => {
-    const brief = `You are a brand strategist. I am building a fictional D2C skincare brand called Sundara targeting urban Indian women aged 25–35. Build the identity step by step. Start with Step 1: Brand Positioning Statement. Ask for feedback before proceeding to the next step.`;
-    const result = `Sundara is a sophisticated yet accessible D2C skincare brand tailored for urban Indian women aged 25–35. We bridge the gap between traditional beauty practices and cutting-edge science, using high-quality, natural ingredients to deliver premium, results-driven products that nurture your skin's natural glow while empowering you to embrace your unique beauty.\n\nFeedback: Please review this Brand Positioning Statement. I will proceed to the next step once approved.`;
-    setGraph([
-      { id: "sundara-brief", type: "textInput", position: { x: 60, y: 220 }, data: { kind: "textInput", label: "Sundara brand brief", text: brief, status: "done", output: brief } },
-      { id: "sundara-refiner", type: "iterativeRefiner", position: { x: 410, y: 130 }, data: { kind: "iterativeRefiner", label: "Step 1: Positioning loop", provider: "ollama", model: "hermes3:latest", goal: brief, rubric: "Create only Step 1. Be concise, premium but accessible, relevant to urban Indian women aged 25–35, avoid unsupported claims, and ask for feedback at the end.", maxIterations: 3, targetScore: 9, temperature: 0.6, status: "done", output: result, history: [{ iteration: 1, score: 0, critique: "Initial draft created.", draft: result, selected: false, selectionReason: "Not selected: the later candidate scored 10/10." }, { iteration: 2, score: 10, critique: "Clear, relevant, concise, and asks for feedback.", draft: result, selected: true, selectionReason: "Selected: highest evaluation score (10/10)." }] } },
-      { id: "sundara-output", type: "output", position: { x: 820, y: 220 }, data: { kind: "output", label: "Step 1 output", format: "markdown", status: "done", output: result } }
-    ], [
-      { id: "sundara-brief-refiner", source: "sundara-brief", target: "sundara-refiner" },
-      { id: "sundara-refiner-output", source: "sundara-refiner", target: "sundara-output" }
-    ]);
+  // One-click demo: loads a fully-completed autonomous UX Review of a Flipkart
+  // product page (pre-computed, since Flipkart blocks live capture). Every node
+  // is "done" with real outputs; the Report node opens a client-ready report.
+  const loadFlipkartDemo = () => {
+    const { nodes: demoNodes, edges: demoEdges } = buildFlipkartDemo();
+    setGraph(demoNodes, demoEdges);
   };
 
+  // Kinds the Workflow Assistant is allowed to place (now includes the UX
+  // Review blocks so it can assemble a full audit pipeline on its own).
+  const ASSISTANT_KINDS = ["textInput", "llm", "template", "iterativeRefiner", "output", "webCapture", "uxAnalysis", "mergeFindings", "reportGenerator", "figmaWrite", "mcpTool"];
+  const firstUrl = (text?: string) => text?.match(/https?:\/\/[^\s"]+/i)?.[0] || "";
+
   const createAssistantGraph = (graph: { nodes: any[]; edges: [number, number][]; task?: string }) => {
-    const nodes = graph.nodes.slice(0, 12).map((spec, index) => {
-      const kind = ["textInput", "llm", "template", "iterativeRefiner", "output"].includes(spec.kind) ? spec.kind : "textInput";
+    const url = firstUrl(graph.task);
+    const nodes = graph.nodes.slice(0, 16).map((spec, index) => {
+      const kind = ASSISTANT_KINDS.includes(spec.kind) ? spec.kind : "textInput";
       const base = defaultDataFor(kind);
       const data = { ...base, ...spec, kind } as AnyNodeData;
       if (kind === "textInput" && !(data as any).text) (data as any).text = index === 0 ? graph.task || "" : "";
       if (kind === "template" && !(data as any).template) (data as any).template = spec.text || "{{in1}}";
       if (kind === "llm" && !(data as any).systemPrompt) (data as any).systemPrompt = spec.goal || "Help complete the connected task.";
-      return { id: `assistant_${index}_${nextId()}`, type: kind, position: { x: 80 + index * 300, y: 180 }, data };
+      // Seed the URL into the capture node (and a URL text input) if the assistant left it blank.
+      if (kind === "webCapture" && !(data as any).url) (data as any).url = url;
+      if (kind === "textInput" && url && index === 0) (data as any).text = url;
+      // Guard: uxAnalysis must have a lens array.
+      if (kind === "uxAnalysis" && !Array.isArray((data as any).lenses)) (data as any).lenses = ["nielsen"];
+      // Position is assigned by layoutGraph below (layered, non-overlapping).
+      return { id: `assistant_${index}_${nextId()}`, type: kind, position: { x: 0, y: 0 }, data };
     });
     const edges = (graph.edges || []).filter(([from, to]) => nodes[from] && nodes[to]).map(([from, to], index) => ({ id: `assistant_edge_${index}`, source: nodes[from].id, target: nodes[to].id }));
-    return { nodes, edges };
+    return { nodes: layoutGraph(nodes, edges), edges };
   };
   const applyAssistantGraph = (graph: { nodes: any[]; edges: [number, number][]; task?: string }) => {
     const workflow = createAssistantGraph(graph); setGraph(workflow.nodes, workflow.edges);
   };
-  const runAssistantGraph = async (graph: { nodes: any[]; edges: [number, number][]; task?: string }) => {
+  const runAssistantGraph = async (graph: { nodes: any[]; edges: [number, number][]; task?: string }, onProgress?: ProgressFn) => {
     const workflow = createAssistantGraph(graph); setGraph(workflow.nodes, workflow.edges);
-    return runWorkflow(workflow.nodes, workflow.edges);
+    return runWorkflow(workflow.nodes, workflow.edges, onProgress);
+  };
+
+  // Autonomous UX Review: build the full graph from a URL, run it, open the
+  // report, and return a chat-facing summary. Reuses runWorkflow end to end.
+  const runUXReview = async (url: string, figmaFileUrl = "", onProgress?: ProgressFn): Promise<string> => {
+    const { nodes: reviewNodes, edges: reviewEdges } = buildUXReviewGraph(url, figmaFileUrl);
+    setGraph(reviewNodes, reviewEdges);
+    const runResult = await runWorkflow(reviewNodes, reviewEdges, onProgress);
+    if (runResult.startsWith("⏹")) return runResult; // user stopped the audit
+    const auditOutput = reviewNodes.find((node) => node.data.kind === "mergeFindings")?.data.output;
+    const reportHtml = reviewNodes.find((node) => node.data.kind === "reportGenerator")?.data.output;
+    let audit: UXAudit | null = null;
+    try { audit = auditOutput ? (JSON.parse(auditOutput) as UXAudit) : null; } catch { audit = null; }
+    // The report is not auto-opened; the chat shows Download PDF / Open HTML
+    // buttons (it reads the report from the graph's Report node on click).
+    let summary = summarizeUXReview(url, audit, !!reportHtml);
+    // If a Figma link was queued while the audit ran, write the redesign now.
+    if (pendingFigmaRef.current) {
+      const pending = pendingFigmaRef.current;
+      pendingFigmaRef.current = "";
+      summary += `\n\n${await writeRedesignToFigma(pending, reviewNodes, reviewEdges)}`;
+    } else {
+      // Otherwise, if the write paused for a destination, surface the ask.
+      const figmaOut = reviewNodes.find((node) => node.data.kind === "figmaWrite")?.data.output;
+      if (figmaOut && figmaOut.startsWith("⏸")) summary += `\n\n${figmaOut}`;
+    }
+    return summary;
+  };
+  const applyUXReview = () => { const graph = buildUXReviewGraph(""); setGraph(graph.nodes, graph.edges); };
+
+  const FIGMA_LINK_RE = /^https?:\/\/(www\.)?figma\.com\/(file|design|proto|board)\//i;
+
+  // Writes the already-prepared redesign spec (from a graph's figmaWrite input)
+  // to a Figma destination. Reused by the follow-up link and the auto-write.
+  const writeRedesignToFigma = async (figmaFileUrl: string, gNodes: Node<AnyNodeData>[], gEdges: any[]): Promise<string> => {
+    const figmaNode = gNodes.find((node) => node.data.kind === "figmaWrite");
+    if (!figmaNode) return "There's no prepared redesign yet. Paste a product URL first and I'll run the audit.";
+    const inEdge = gEdges.find((edge) => edge.target === figmaNode.id);
+    const spec = gNodes.find((node) => node.id === inEdge?.source)?.data.output || "";
+    if (!spec.trim()) return "The redesign spec isn't ready yet. Let the audit finish, then share your Figma link again.";
+    updateNodeData(figmaNode.id, { figmaFileUrl, status: "running", error: undefined });
+    try {
+      const res = await fetch("/api/figma-write", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ serverUrl: (figmaNode.data as any).serverUrl, toolName: (figmaNode.data as any).toolName, figmaFileUrl, spec })
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Figma write failed");
+      updateNodeData(figmaNode.id, { status: "done", output: body.text });
+      if (body.mode === "invalid-destination") return body.text;
+      return `Validated ${figmaFileUrl} and generated the editable redesign for that file.\n\n${body.text}`;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Figma write failed";
+      updateNodeData(figmaNode.id, { status: "error", error: message });
+      return message;
+    }
+  };
+
+  // Chat handler for a Figma link. If an audit is still running, queue the link
+  // (written automatically on completion); otherwise write immediately.
+  const provideFigmaLink = async (figmaFileUrl: string): Promise<string> => {
+    if (!FIGMA_LINK_RE.test(figmaFileUrl)) return "That doesn't look like a Figma file link. Please paste one like https://www.figma.com/design/…";
+    if (running) {
+      pendingFigmaRef.current = figmaFileUrl;
+      return "Got it — I'll write the redesign into that Figma file automatically as soon as the audit finishes.";
+    }
+    return writeRedesignToFigma(figmaFileUrl, nodes, edges);
   };
 
   const saveGraph = () => {
@@ -193,7 +310,7 @@ function Canvas() {
     reader.readAsText(file);
   };
 
-  if (!showCanvas) return <GuidedFlow onApply={applyAssistantGraph} onRun={runAssistantGraph} onCanvas={() => setShowCanvas(true)} />;
+  if (!showCanvas) return <GuidedFlow onApply={applyAssistantGraph} onRun={runAssistantGraph} onUXReview={runUXReview} onFigmaLink={provideFigmaLink} onCanvas={() => setShowCanvas(true)} onStop={stopRun} running={running} runProgress={runProgress} etaSeconds={etaSeconds} totalNodes={totalNodes} />;
   return (
     <div className="app-shell">
       <Sidebar />
@@ -205,8 +322,11 @@ function Canvas() {
           <button className="btn" onClick={saveGraph}>
             Save
           </button>
-          <button className="btn" onClick={loadSundaraDemo}>
-            Load Sundara loop
+          <button className="btn" onClick={loadFlipkartDemo}>
+            Load Flipkart demo
+          </button>
+          <button className="btn" onClick={applyUXReview} title="Build the autonomous UX Review graph — set a URL on the Capture node, then Run graph">
+            ◎ UX Review
           </button>
           <button className="btn" onClick={() => setShowAssistant(true)}>✦ Workflow Assistant</button>
           {running && <div className="run-status">

@@ -1,0 +1,79 @@
+<style>
+  body { margin: 0; padding: 16px; background: var(--figma-color-bg); color: var(--figma-color-text); font: 12px Inter, sans-serif; }
+  h2 { margin: 0 0 4px; font-size: 15px; }
+  p { color: var(--figma-color-text-secondary); line-height: 1.45; margin: 0 0 12px; }
+  label { display: block; font-size: 11px; color: var(--figma-color-text-secondary); margin: 10px 0 4px; }
+  input { box-sizing: border-box; width: 100%; border: 1px solid var(--figma-color-border); border-radius: 6px; padding: 8px; background: var(--figma-color-bg-secondary); color: var(--figma-color-text); font: 12px ui-monospace, monospace; }
+  .row { display: flex; gap: 8px; margin-top: 12px; }
+  button { border: 0; border-radius: 6px; padding: 9px 12px; cursor: pointer; font-weight: 600; }
+  #connect { background: #ff8a4c; color: #21120a; flex: 1; }
+  #disconnect { background: var(--figma-color-bg-secondary); color: var(--figma-color-text); }
+  .status { margin-top: 14px; padding: 10px; border-radius: 8px; background: var(--figma-color-bg-secondary); font-size: 12px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: #999; }
+  .dot.on { background: #3dd68c; } .dot.err { background: #ff6b6b; }
+  .log { margin-top: 10px; max-height: 150px; overflow: auto; font: 11px ui-monospace, monospace; color: var(--figma-color-text-secondary); white-space: pre-wrap; }
+</style>
+
+<h2>Node Studio Bridge</h2>
+<p>Connect this file to Node Studio. When a UX Review generates a redesign, it's written straight into this file — editable, native layers.</p>
+
+<label>Node Studio server URL</label>
+<input id="server" value="http://localhost:8787" />
+<div class="row">
+  <button id="connect">Connect</button>
+  <button id="disconnect">Stop</button>
+</div>
+<div class="status"><span id="dot" class="dot"></span><span id="state">Not connected</span></div>
+<div class="log" id="log"></div>
+
+<script>
+  let polling = false;
+  let base = "";
+  const $ = (id) => document.getElementById(id);
+  const setState = (text, cls) => { $("state").textContent = text; $("dot").className = "dot" + (cls ? " " + cls : ""); };
+  const log = (m) => { const el = $("log"); el.textContent = (new Date().toLocaleTimeString() + "  " + m + "\n") + el.textContent; };
+
+  // Continuous long-poll: one request stays open until a job arrives (or ~25s),
+  // then we immediately re-issue. An in-flight request keeps working even when
+  // Figma is in the background, unlike setInterval (which gets throttled).
+  async function loop() {
+    while (polling) {
+      try {
+        const r = await fetch(base + "/api/figma-bridge/poll", { method: "GET" });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        setState("Connected — waiting for redesigns", "on");
+        const { job } = await r.json();
+        if (job) {
+          var p = job.payload || {};
+          log(p.sourceNodeId ? "Applying redesign to a copy of your design…" : ("Building redesign… (" + ((p.spec && p.spec.screenName) || "screen") + ")"));
+          parent.postMessage({ pluginMessage: { type: "build", jobId: job.id, payload: p } }, "*");
+        }
+      } catch (e) {
+        setState("Can't reach Node Studio (" + e.message + ")", "err");
+        await new Promise((res) => setTimeout(res, 2000));
+      }
+    }
+  }
+
+  $("connect").onclick = () => {
+    base = $("server").value.replace(/\/+$/, "");
+    if (polling) return;
+    polling = true;
+    setState("Connecting…");
+    log("Connected to " + base);
+    loop();
+  };
+  $("disconnect").onclick = () => { polling = false; setState("Stopped"); log("Stopped polling."); };
+
+  // Result coming back from the main thread → report to Node Studio.
+  onmessage = async (event) => {
+    const msg = event.data.pluginMessage;
+    if (!msg || msg.type !== "built") return;
+    try {
+      // GET with query params → no CORS preflight (works from the plugin sandbox).
+      const q = new URLSearchParams({ jobId: msg.jobId, ok: String(!!msg.ok), frameId: msg.frameId || "", frameName: msg.frameName || "", error: msg.error || "", edits: msg.edits != null ? String(msg.edits) : "" });
+      await fetch(base + "/api/figma-bridge/result?" + q.toString());
+      log(msg.ok ? ("✓ Created \"" + (msg.frameName || "screen") + "\" (" + (msg.sections || 0) + " sections)") : ("✗ " + msg.error));
+    } catch (e) { log("Failed to report result: " + e.message); }
+  };
+</script>
