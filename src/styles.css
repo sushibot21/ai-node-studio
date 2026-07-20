@@ -554,7 +554,10 @@ html, body, #root {
   border: 1px solid rgba(255,255,255,0.08);
   box-shadow: none;
 }
-:root[data-theme="light"] .chat-bubble.user,
+:root[data-theme="light"] .chat-bubble.user {
+  background: rgba(0,0,0,0.05);
+  border-color: rgba(0,0,0,0.08);
+}
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) .chat-bubble.user {
     background: rgba(0,0,0,0.05);
@@ -662,7 +665,7 @@ html, body, #root {
   backdrop-filter: blur(20px);
   box-shadow: var(--shadow-sm);
 }
-:root[data-theme="dark"] .topbar,
+:root[data-theme="dark"] .topbar { background: rgba(28,29,31,0.82); }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .topbar { background: rgba(28,29,31,0.82); }
 }
