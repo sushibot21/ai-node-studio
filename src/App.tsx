@@ -10,6 +10,7 @@ import {
 } from "@xyflow/react";
 import { useGraphStore, nextId } from "./store";
 import { Sidebar } from "./components/Sidebar";
+import { ViewSwitch } from "./components/ViewSwitch";
 import { SettingsModal } from "./components/SettingsModal";
 import { TextInputNode } from "./nodes/TextInputNode";
 import { LLMNode } from "./nodes/LLMNode";
@@ -23,6 +24,7 @@ import { UXAnalysisNode } from "./nodes/UXAnalysisNode";
 import { MergeFindingsNode } from "./nodes/MergeFindingsNode";
 import { ReportGeneratorNode, openReport } from "./nodes/ReportGeneratorNode";
 import { FigmaWriteNode } from "./nodes/FigmaWriteNode";
+import { VerifyRedesignNode } from "./nodes/VerifyRedesignNode";
 import { buildUXReviewGraph, summarizeUXReview } from "./lib/uxReviewGraph";
 import { buildFlipkartDemo } from "./lib/flipkartDemo";
 import { layoutGraph } from "./lib/layoutGraph";
@@ -46,7 +48,8 @@ const nodeTypes = {
   uxAnalysis: UXAnalysisNode,
   mergeFindings: MergeFindingsNode,
   reportGenerator: ReportGeneratorNode,
-  figmaWrite: FigmaWriteNode
+  figmaWrite: FigmaWriteNode,
+  verifyRedesign: VerifyRedesignNode
 };
 
 function defaultDataFor(kind: string): AnyNodeData {
@@ -81,6 +84,8 @@ function defaultDataFor(kind: string): AnyNodeData {
       return { kind: "reportGenerator", title: "", reportUrl: "" };
     case "figmaWrite":
       return { kind: "figmaWrite", serverUrl: "", toolName: "", figmaFileUrl: "" };
+    case "verifyRedesign":
+      return { kind: "verifyRedesign", provider: "anthropic", model: "claude-opus-4-7", targetScore: 7 };
     default:
       return { kind: "textInput", text: "" };
   }
@@ -313,7 +318,7 @@ function Canvas() {
   if (!showCanvas) return <GuidedFlow onApply={applyAssistantGraph} onRun={runAssistantGraph} onUXReview={runUXReview} onFigmaLink={provideFigmaLink} onCanvas={() => setShowCanvas(true)} onStop={stopRun} running={running} runProgress={runProgress} etaSeconds={etaSeconds} totalNodes={totalNodes} />;
   return (
     <div className="app-shell">
-      <Sidebar />
+      <Sidebar viewToggle={<ViewSwitch mode="workflow" onChange={(m) => { if (m === "agent") setShowCanvas(false); }} />} />
       <div style={{ position: "relative", flex: 1 }} ref={wrapperRef}>
         <div className="topbar">
           <button className="btn primary" onClick={runGraph} disabled={running}>
@@ -361,7 +366,6 @@ function Canvas() {
           <MiniMap />
         </ReactFlow>
       </div>
-      <div className="view-toggle fixed-view-toggle"><button onClick={() => setShowCanvas(false)} title="Agent view"><i className="chat-mark" /></button><button className="active" title="Workflow view">&lt;&gt;</button></div>
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {showAssistant && <WorkflowAssistant onClose={() => setShowAssistant(false)} onApply={applyAssistantGraph} />}
     </div>

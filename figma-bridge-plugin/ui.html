@@ -23,24 +23,24 @@
   <button id="connect">Connect</button>
   <button id="disconnect">Stop</button>
 </div>
-<div class="status"><span id="dot" class="dot"></span><span id="state">Not connected</span></div>
+<div class="status"><span id="dot" class="dot"></span><span id="state">Auto-connecting…</span></div>
 <div class="log" id="log"></div>
 
 <script>
   let polling = false;
   let base = "";
+  let retries = 0;
+  const MAX_BACKOFF = 10000;
   const $ = (id) => document.getElementById(id);
   const setState = (text, cls) => { $("state").textContent = text; $("dot").className = "dot" + (cls ? " " + cls : ""); };
   const log = (m) => { const el = $("log"); el.textContent = (new Date().toLocaleTimeString() + "  " + m + "\n") + el.textContent; };
 
-  // Continuous long-poll: one request stays open until a job arrives (or ~25s),
-  // then we immediately re-issue. An in-flight request keeps working even when
-  // Figma is in the background, unlike setInterval (which gets throttled).
   async function loop() {
     while (polling) {
       try {
         const r = await fetch(base + "/api/figma-bridge/poll", { method: "GET" });
         if (!r.ok) throw new Error("HTTP " + r.status);
+        retries = 0;
         setState("Connected — waiting for redesigns", "on");
         const { job } = await r.json();
         if (job) {
@@ -49,31 +49,38 @@
           parent.postMessage({ pluginMessage: { type: "build", jobId: job.id, payload: p } }, "*");
         }
       } catch (e) {
-        setState("Can't reach Node Studio (" + e.message + ")", "err");
-        await new Promise((res) => setTimeout(res, 2000));
+        retries++;
+        const delay = Math.min(1000 * Math.pow(1.5, retries), MAX_BACKOFF);
+        setState("Reconnecting… (attempt " + retries + ")", "err");
+        log("Connection lost: " + e.message + " — retrying in " + Math.round(delay / 1000) + "s");
+        await new Promise((res) => setTimeout(res, delay));
       }
     }
   }
 
-  $("connect").onclick = () => {
+  function start() {
     base = $("server").value.replace(/\/+$/, "");
     if (polling) return;
     polling = true;
+    retries = 0;
     setState("Connecting…");
-    log("Connected to " + base);
+    log("Connecting to " + base);
     loop();
-  };
+  }
+
+  $("connect").onclick = start;
   $("disconnect").onclick = () => { polling = false; setState("Stopped"); log("Stopped polling."); };
 
-  // Result coming back from the main thread → report to Node Studio.
   onmessage = async (event) => {
     const msg = event.data.pluginMessage;
     if (!msg || msg.type !== "built") return;
     try {
-      // GET with query params → no CORS preflight (works from the plugin sandbox).
-      const q = new URLSearchParams({ jobId: msg.jobId, ok: String(!!msg.ok), frameId: msg.frameId || "", frameName: msg.frameName || "", error: msg.error || "", edits: msg.edits != null ? String(msg.edits) : "" });
+      const q = new URLSearchParams({ jobId: msg.jobId, ok: String(!!msg.ok), frameId: msg.frameId || "", frameName: msg.frameName || "", error: msg.error || "", edits: msg.edits != null ? String(msg.edits) : (msg.applied != null ? String(msg.applied) : ""), skipped: msg.skipped != null ? String(msg.skipped) : "", debug: msg.debug ? JSON.stringify(msg.debug) : "" });
       await fetch(base + "/api/figma-bridge/result?" + q.toString());
       log(msg.ok ? ("✓ Created \"" + (msg.frameName || "screen") + "\" (" + (msg.sections || 0) + " sections)") : ("✗ " + msg.error));
     } catch (e) { log("Failed to report result: " + e.message); }
   };
+
+  // Auto-connect on plugin load
+  start();
 </script>

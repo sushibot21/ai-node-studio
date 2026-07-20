@@ -130,6 +130,21 @@ export interface FigmaWriteData extends BaseNodeData {
   figmaFileUrl?: string;
 }
 
+/**
+ * Verifies a pushed redesign against original UX findings using a vision model.
+ * Screenshots the redesigned frame via Figma REST, feeds to Claude with findings,
+ * returns {score, verdict, gaps, recommendations}. Enables the outer feedback loop.
+ */
+export interface VerifyRedesignData extends BaseNodeData {
+  kind: "verifyRedesign";
+  provider: TextProvider;
+  model: string;
+  targetScore: number;
+  lastScore?: number;
+  lastVerdict?: "pass" | "fail" | "partial";
+  lastGaps?: string[];
+}
+
 export type Severity = "critical" | "high" | "medium" | "low";
 
 /** A single audited issue. Every field is required so reports are never vague. */
@@ -202,4 +217,5 @@ export type AnyNodeData =
   | UXAnalysisData
   | MergeFindingsData
   | ReportGeneratorData
-  | FigmaWriteData;
+  | FigmaWriteData
+  | VerifyRedesignData;

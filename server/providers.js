@@ -15,6 +15,17 @@ function anthropicContent(input, image) {
 }
 
 async function callAnthropic({ model, systemPrompt, input, temperature, image }) {
+  const resolvedModel = model || "claude-opus-4-7";
+  // Opus 4.7+ rejects temperature/top_p/top_k and budget_tokens (400). Only
+  // pass sampling params on older models that still accept them.
+  const isNewGen = /^claude-(opus-4-[78]|opus-4-8|sonnet-5|fable-5|mythos-5)/.test(resolvedModel);
+  const body = {
+    model: resolvedModel,
+    max_tokens: 8192,
+    system: systemPrompt || undefined,
+    messages: [{ role: "user", content: anthropicContent(input, image) }]
+  };
+  if (!isNewGen && temperature != null) body.temperature = temperature;
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -22,16 +33,7 @@ async function callAnthropic({ model, systemPrompt, input, temperature, image })
       "x-api-key": process.env.ANTHROPIC_API_KEY,
       "anthropic-version": "2023-06-01"
     },
-    body: JSON.stringify({
-      model: model || "claude-sonnet-4-6",
-      // Structured UX findings / redesign specs routinely exceed 2k tokens; a
-      // low cap truncates the JSON mid-structure and it fails to parse. 8k gives
-      // the reasoning nodes room to return complete JSON.
-      max_tokens: 8192,
-      temperature: temperature ?? 1,
-      system: systemPrompt || undefined,
-      messages: [{ role: "user", content: anthropicContent(input, image) }]
-    })
+    body: JSON.stringify(body)
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error?.message || "Anthropic request failed");

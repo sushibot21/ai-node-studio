@@ -127,6 +127,29 @@ async function executeNode(data: AnyNodeData, inputs: string[]): Promise<string>
     );
     return res.text || "";
   }
+  if (data.kind === "verifyRedesign") {
+    // Inputs: figmaWrite result (JSON with frameId), merged audit, and source frame id
+    const parsed = inputs.map((i) => tryParseJSON<any>(i)).filter(Boolean);
+    const push = parsed.find((p) => p.frameId || p.mode === "bridge");
+    const audit = parsed.find((p) => Array.isArray(p.findings));
+    const redesignNodeId = push?.frameId;
+    const sourceNodeId = audit?.pageContext?.figmaNodeId;
+    const fileKey = audit?.pageContext?.figmaFileKey || audit?.pageContext?.fileKey;
+    if (!redesignNodeId || !sourceNodeId || !fileKey) {
+      return JSON.stringify({ error: "verifier missing inputs", have: { redesignNodeId, sourceNodeId, fileKey } });
+    }
+    const res = await runProviderNode(
+      {
+        fileKey, sourceNodeId, redesignNodeId,
+        findings: audit.findings,
+        provider: (data as any).provider,
+        model: (data as any).model,
+        targetScore: (data as any).targetScore || 7
+      },
+      "/api/verify-redesign"
+    );
+    return JSON.stringify(res);
+  }
   if (data.kind === "output") {
     return inputs.join("\n\n");
   }

@@ -11,22 +11,33 @@ import { layoutGraph } from "./layoutGraph";
 // analysis is grounded in the captured screenshot) and gives the strongest
 // findings. Switch a node to Ollama on the canvas for a fully-local run.
 const PROVIDER = "anthropic" as const;
-const MODEL = "claude-sonnet-4-6";
+const MODEL = "claude-opus-4-7";
 
 // The redesign reasoning is Claude's job (Anthropic API), per the native
 // Claude + Figma MCP architecture. It only reasons + emits a spec — it never
 // touches Figma directly; the Figma node's MCP layer performs the write.
 const REDESIGN_PROVIDER = "anthropic" as const;
-const REDESIGN_MODEL = "claude-sonnet-4-6";
+const REDESIGN_MODEL = "claude-opus-4-7";
 
 const FIGMA_SYSTEM_PROMPT =
   "You are a senior product designer. You are given a VERIFIED UX AUDIT (JSON) of a real screen — findings with ids (F001…), titles, violated principles, severity, evidence, and recommendations, plus the captured page context. " +
   "Redesign the SAME screen so that EVERY design decision directly resolves one or more findings. Preserve the original product purpose. Never repeat a mistake the audit identified. " +
   "Do not invent an unrelated marketing page — rebuild the actual screen (its nav, media, primary action, content, forms, trust signals) done correctly.\n\n" +
   "GROUND IT IN THE REAL PAGE: the audit's pageContext lists the page's actual navigation labels, headings, buttons, forms, and visible content. PRESERVE those real sections and real content (product names, nav items, copy) and improve them — do NOT replace them with generic invented sections. Only fix what the findings say is wrong.\n\n" +
-  "IF the audit's pageContext contains a `figmaNodeId` (the source is an existing Figma design), DO NOT return the sectioned spec — return a PATCH that fixes the EXISTING design in place, preserving its exact visual style (so the result stays pixel-for-pixel on brand). Shape: " +
-  '{"mode":"patch","sourceNodeId":"<the exact pageContext.figmaNodeId value>","screenName":"<name> — Redesign","rationale":"...","textEdits":[{"findIndex":<the NUMBER shown before the string in pageContext.textInventoryNumbered>,"replace":"<improved, on-brand copy>"}],"styleEdits":[{"findIndex":<number>,"color":"<hex without #>"}]}. ' +
-  "Patch rules: pageContext.textInventoryNumbered lists every editable string as `<index>: <text>` — set findIndex to the exact number shown before the string (do NOT paste the original text). textEdits: only change lorem-ipsum/placeholder/nonsense copy, typos, or vague CTAs → real, on-brand copy; leave good copy alone. styleEdits (OPTIONAL): recolor a text string via its findIndex + a hex colour — use ONLY to fix a real WCAG contrast finding (darken/lighten low-contrast text) or to strengthen a weak CTA; keep colours consistent with the design's palette. 5-15 textEdits; 0-4 styleEdits, each tied to a finding. This keeps the original design and only corrects content + contrast.\n\n" +
+  "IF the audit's pageContext contains a `figmaNodeId` (the source is an existing Figma design), DO NOT return the sectioned spec — return REDESIGN OPERATIONS that fix the EXISTING design in place, preserving its exact visual style. Shape: " +
+  '{"mode":"redesign","sourceNodeId":"<the exact pageContext.figmaNodeId value>","screenName":"<name> — AI Redesign","rationale":"...","operations":[{"selector":{"text":"..."|"name":"...","type":"FRAME","exact":bool,"index":n,"parent":n},"action":"setFill|setStroke|setCornerRadius|setSpacing|setOpacity|setText|addAnnotation","value":...,"weight":n,"opts":{...}}]}. ' +
+  "REDESIGN OPERATION RULES (violations will break the design): " +
+  "(1) NEVER use action \"setSize\" — it cascades and breaks auto-layout. " +
+  "(2) NEVER add padding via setSpacing where none existed — only ADJUST existing padding values or set itemSpacing. " +
+  "(3) NEVER change fills on generic wrapper frames (name matches \"Container\", \"Margin\", \"Group\", \"Frame\", \"Wrapper\") — only target LEAF nodes or explicitly-named elements (\"Button\", \"Card\", \"Background\", \"Nav\", \"Header\", \"Overlay\"). " +
+  "(4) PRIORITISE DESIGN CHANGES OVER TEXT CHANGES: 60%+ of operations must be visual — setFill on CTAs for contrast/prominence, setStroke on form fields for affordance, setCornerRadius on cards/buttons for polish, setOpacity on de-emphasised elements, setFill on nav/header backgrounds for contrast. Only use setText when a finding EXPLICITLY names wrong/misleading text. " +
+  "(5) Use conservative professional colours from the existing brand palette — no garish, neon, or high-saturation hues. Match the design's existing accent colour when strengthening CTAs. " +
+  "(6) NEVER use mode:\"patch\" with textEdits/styleEdits — that path is deprecated. ALWAYS use mode:\"redesign\" with operations array. " +
+  "(7) Max 30 operations, one targeted change each. Selectors: use {\"name\":\"...\"} whenever possible for precise leaf-node targeting; use {\"text\":\"...\",\"exact\":true} when targeting by visible text; use \"parent\":n to walk up to the target container. " +
+  "(8) Each addAnnotation goes to a separate side panel and explains WHY a change was made (Nielsen heuristic, WCAG rule, or hierarchy principle). Do NOT put annotation text into setText replacement values. " +
+  "(9) Colours are hex strings without '#'. Radii 0-100. Opacity 0-1. Weights (stroke) in px. " +
+  "(10) Preserve all IMAGE fills automatically (setFill skips them) — but never target frames named after image assets ('*.png', '*.svg', 'HomeBanner*', etc.) with setFill. " +
+  "Aim for 15-25 operations that make the redesign visibly better while keeping the original layout intact.\n\n" +
   "OTHERWISE (a web page, no figmaNodeId) return ONLY this sectioned JSON spec (no prose, no code fences):\n" +
   '{"screenName":"short name of the redesigned screen",' +
   '"productPurpose":"one line: what the user is here to accomplish",' +
