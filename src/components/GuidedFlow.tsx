@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useGraphStore } from "../store";
 import { openReport, exportReportPdf, exportReportDocx, exportReportPptx } from "../nodes/ReportGeneratorNode";
 import { ViewSwitch } from "./ViewSwitch";
+import { buildUXReviewGraph } from "../lib/uxReviewGraph";
 import { IconAttach, IconLightbulb, IconMic, IconSend, IconStop, IconCopy, IconThumbUp, IconThumbDown, IconStar, IconGlobe, IconSparkle, IconMerge } from "./Icons";
 
 // Rotating status lines shown while the model works, so the wait reads as
@@ -35,7 +36,7 @@ type Progress = { stage: string; completed: number; total: number };
 type RunProgress = { completed: number; current: string; elapsed: number };
 
 export function GuidedFlow({ onApply, onRun, onUXReview, onFigmaLink, onCanvas, onStop, running, runProgress, etaSeconds, totalNodes }: { onApply: (graph: any) => void; onRun: (graph: any, onProgress?: (p: Progress) => void) => Promise<string>; onUXReview: (url: string, figmaFileUrl?: string, onProgress?: (p: Progress) => void) => Promise<string>; onFigmaLink: (figmaUrl: string) => Promise<string>; onCanvas: () => void; onStop: () => void; running: boolean; runProgress: RunProgress; etaSeconds: number | null; totalNodes: number }) {
-  const { chats, activeChatId, newChat, selectChat, setChatMessages, renameChat, deleteChat, nodes } = useGraphStore();
+  const { chats, activeChatId, newChat, selectChat, setChatMessages, renameChat, deleteChat, nodes, setGraphForChat } = useGraphStore();
   // Inline rename state for the conversation rail.
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
@@ -108,6 +109,14 @@ export function GuidedFlow({ onApply, onRun, onUXReview, onFigmaLink, onCanvas, 
 
   // Consumes SSE events from /api/loop-audit and updates chat tail with iterative progress.
   const runLoopAudit = async (figmaUrl: string, onProgress: (p: Progress) => void): Promise<string> => {
+    // Seed a representative UX Review graph for THIS chat so the Workflow view
+    // isn't empty when the user switches to it — loop-audit is server-side SSE
+    // and would otherwise leave the chat's canvas blank.
+    const startingChatId = useGraphStore.getState().activeChatId;
+    if (startingChatId) {
+      const seed = buildUXReviewGraph(figmaUrl);
+      setGraphForChat(startingChatId, seed.nodes as any, seed.edges as any);
+    }
     const res = await fetch("/api/loop-audit", {
       method: "POST",
       headers: { "content-type": "application/json" },

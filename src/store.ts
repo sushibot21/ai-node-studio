@@ -30,6 +30,7 @@ interface StoreState {
   addNode: (node: Node<AnyNodeData>) => void;
   updateNodeData: (id: string, data: Record<string, unknown>) => void;
   setGraph: (nodes: Node<AnyNodeData>[], edges: Edge[]) => void;
+  setGraphForChat: (chatId: string, nodes: Node<AnyNodeData>[], edges: Edge[]) => void;
   chats: WorkflowChat[];
   activeChatId: string;
   newChat: () => void;
@@ -65,6 +66,12 @@ export const useGraphStore = create<StoreState>()(persist((set, get) => ({
       set({ nodes, chats: get().chats.map((chat) => chat.id === get().activeChatId ? { ...chat, nodes, updatedAt: Date.now() } : chat) });
     },
   setGraph: (nodes, edges) => set({ nodes, edges, chats: get().chats.map((chat) => chat.id === get().activeChatId ? { ...chat, nodes, edges, updatedAt: Date.now() } : chat) }),
+  // Write graph state to a SPECIFIC chat regardless of what's currently active —
+  // used by long-running audits so a mid-run chat switch doesn't cross-write.
+  setGraphForChat: (chatId, nodes, edges) => set({
+    ...(chatId === get().activeChatId ? { nodes, edges } : {}),
+    chats: get().chats.map((chat) => chat.id === chatId ? { ...chat, nodes, edges, updatedAt: Date.now() } : chat)
+  }),
   newChat: () => {
     const chat = makeChat();
     set({ chats: [chat, ...get().chats], activeChatId: chat.id, nodes: [], edges: [] });
