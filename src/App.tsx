@@ -170,18 +170,10 @@ function Canvas() {
     const outputNode = [...workflowNodes].reverse().find((node) => node.data.kind === "output");
     const raw = outputNode?.data.output || [...workflowNodes].reverse().find((node) => node.data.output)?.data.output || "";
     if (!raw) return "The workflow finished, but did not return text output.";
-    // Chat readability: raw JSON blobs / very long outputs blow up the conversation.
-    // Show a compact preview and point users to the Workflow view for the full payload.
-    const trimmed = raw.trim();
-    const looksJson = /^[[{]/.test(trimmed);
-    const CAP = 800;
-    if (looksJson) {
-      return `Workflow finished. The final node returned structured output (${trimmed.length.toLocaleString()} chars). Open the Workflow view to inspect it in the Output node.\n\nPreview:\n\n${trimmed.slice(0, CAP)}${trimmed.length > CAP ? "\n…" : ""}`;
-    }
-    if (trimmed.length > CAP * 2) {
-      return `${trimmed.slice(0, CAP * 2)}\n\n…truncated (${trimmed.length.toLocaleString()} chars total). Full output is in the Output node in Workflow view.`;
-    }
-    return trimmed;
+    // Return the model's full response — the chat needs the actual answer, not a
+    // pointer to another view. Long JSON blobs are handled by the bubble's own
+    // scroll container in styles.css so they don't blow up the conversation.
+    return raw.trim();
   };
   const runGraph = async () => { await runWorkflow(nodes, edges); };
   // Cancel the in-flight run (from the chat Stop button).

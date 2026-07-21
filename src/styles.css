@@ -1311,18 +1311,6 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
    Overrides applied at the end so token-based rules above stay authoritative.
    ========================================================================== */
 
-/* Softer landing hero + ambient gradient wash behind the guided chat column. */
-.guided-chat {
-  background:
-    radial-gradient(1200px 500px at 20% -10%, rgba(62,77,237,0.08), transparent 60%),
-    radial-gradient(900px 400px at 100% 0%, rgba(255,138,76,0.06), transparent 60%);
-}
-:root[data-theme="dark"] .guided-chat,
-:root:not([data-theme="light"]) .guided-chat {
-  background:
-    radial-gradient(1200px 500px at 20% -10%, rgba(94,110,255,0.10), transparent 60%),
-    radial-gradient(900px 400px at 100% 0%, rgba(255,138,76,0.06), transparent 60%);
-}
 .guided-title span { font-weight: 800; }
 .guided-title h1 { font-size: 48px; letter-spacing: -0.035em; }
 .guided-title p { font-size: 17px; max-width: 60ch; }
@@ -1341,6 +1329,13 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 .chat-bubble.assistant { padding: var(--space-md) 0; }
 .chat-bubble.assistant.dls-response { padding: var(--space-lg) 0 var(--space-sm); border-top: 1px solid var(--border-low); }
 .chat-bubble.assistant.dls-response:first-of-type { border-top: none; padding-top: 0; }
+/* Long responses (raw JSON, large audit outputs) stay scannable — bubble body
+   caps height and scrolls internally instead of dominating the thread. */
+.chat-bubble.assistant .dls-body {
+  max-height: 60vh;
+  overflow-y: auto;
+  word-break: break-word;
+}
 .chat-bubble.user {
   border-radius: 18px 18px 6px 18px;
   padding: 12px 16px;
