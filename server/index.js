@@ -254,7 +254,9 @@ const bridgeConnected = () => Date.now() - bridge.lastSeen < 90000;
 async function enqueueBridge(payload, label) {
   const id = crypto.randomUUID();
   bridge.jobs.push({ id, payload });
-  const deadline = Date.now() + 60000;
+  // 3-minute deadline: 30-op redesigns can take 90s+ on complex frames, and the
+  // plugin has to serialize clone + patch through Figma's throttled main thread.
+  const deadline = Date.now() + 180000;
   while (Date.now() < deadline) {
     const r = bridge.results.get(id);
     if (r) {
@@ -264,7 +266,7 @@ async function enqueueBridge(payload, label) {
     }
     await new Promise((r2) => setTimeout(r2, 350));
   }
-  throw new Error("The Figma bridge plugin didn't respond in time (make sure the Node Studio Bridge plugin is running in your Figma file).");
+  throw new Error("The Figma bridge plugin didn't respond in time (180s). Make sure the Node Studio Bridge plugin is running and the Figma tab is foregrounded.");
 }
 
 // Plugin ← LONG-POLLS for the next build job (also its heartbeat). The request
@@ -288,10 +290,10 @@ app.get("/api/figma-bridge/poll", async (_req, res) => {
 // Plugin → reports a build result. GET (query params) so it's a CORS-"simple"
 // request with no preflight — the plugin's sandboxed origin can't get blocked.
 app.get("/api/figma-bridge/result", (req, res) => {
-  const { jobId, ok, frameId, frameName, error, edits } = req.query;
-  console.log(`[bridge] result for ${jobId}: ok=${ok}${error ? " error=" + error : ""}`);
+  const { jobId, ok, frameId, frameName, error, edits, opErrors } = req.query;
+  console.log(`[bridge] result for ${jobId}: ok=${ok} edits=${edits}${error ? " error=" + error : ""}${opErrors ? " opErrors=" + opErrors : ""}`);
   const { debug, skipped } = req.query;
-  if (jobId) bridge.results.set(jobId, { jobId, ok: ok === "true" || ok === "1", frameId, frameName, error, edits: edits != null ? Number(edits) : undefined, debug, skipped });
+  if (jobId) bridge.results.set(jobId, { jobId, ok: ok === "true" || ok === "1", frameId, frameName, error, edits: edits != null ? Number(edits) : undefined, debug, skipped, opErrors });
   res.json({ ok: true });
 });
 // App → is a plugin currently connected?

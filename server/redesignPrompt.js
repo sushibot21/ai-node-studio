@@ -16,6 +16,9 @@ Return ONLY valid JSON:
   "operations": [ ...array of operation objects... ]
 }
 
+## HARD REQUIREMENT — READ FIRST
+Your operations MUST include at least **2 insertSection or cloneAndAppend ops**. Governance auto-rejects specs with 0 structural ops (score penalty -5). Recolor/reflow-only is not a redesign. Before you emit the JSON, count your structural ops. If it's 0 or 1, add more — invent a "Quick Actions", "Popular Services", or "Recommended" section that fits the findings.
+
 ## OPERATION SCHEMA
 Each operation: { "selector": {...}, "action": "...", "value": ..., "opts": {...} }
 
@@ -139,14 +142,16 @@ For each finding pattern below, emit the EXACT ops shown. These are proven to wo
 - setOpacity to 0.72-0.82 on the secondary element frames
 
 ## OPERATION PRIORITY (most impactful first):
-1. setFill on buttons/CTAs for contrast and prominence
-2. setStroke on form fields for affordance
-3. setCornerRadius on cards/buttons for visual polish
-4. setFill on nav/header backgrounds for contrast
-5. setOpacity on de-emphasized elements (badges, secondary info)
-6. setSpacing ONLY for itemSpacing adjustments (NOT padding)
-7. setText ONLY when finding explicitly identifies wrong/misleading text
-8. addAnnotation to document each change rationale`,
+1. **insertSection** for buried content, missing quick-actions, empty rails (MANDATORY — at least 2 structural ops per redesign)
+2. **cloneAndAppend** to extend existing card rows / chip rows when findings say "too few options" or "sparse"
+3. setFill on buttons/CTAs for contrast and prominence
+4. setStroke on form fields for affordance
+5. setCornerRadius on cards/buttons for visual polish
+6. setFill on nav/header backgrounds for contrast
+7. setOpacity on de-emphasized elements (badges, secondary info)
+8. setSpacing ONLY for itemSpacing adjustments (NOT padding)
+9. setText ONLY when finding explicitly identifies wrong/misleading text
+10. addAnnotation to document each change rationale`,
 
     user: `## UX FINDINGS TO ADDRESS
 ${JSON.stringify(findings, null, 2)}
@@ -156,6 +161,6 @@ ${JSON.stringify(nodeTree, null, 2)}
 
 ${pageContext ? `## PAGE CONTEXT\n${typeof pageContext === "string" ? pageContext : JSON.stringify(pageContext, null, 2)}` : ""}
 
-Generate the redesign operations JSON. Remember: NO setSize, NO adding padding, NO changing container fills, NO garish colors.`
+Generate the redesign operations JSON. MUST include ≥2 insertSection/cloneAndAppend ops (governance auto-rejects otherwise). NO setSize, NO adding padding, NO changing container fills, NO garish colors.`
   };
 }

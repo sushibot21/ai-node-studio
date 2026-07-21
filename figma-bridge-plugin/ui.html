@@ -75,9 +75,18 @@
     const msg = event.data.pluginMessage;
     if (!msg || msg.type !== "built") return;
     try {
-      const q = new URLSearchParams({ jobId: msg.jobId, ok: String(!!msg.ok), frameId: msg.frameId || "", frameName: msg.frameName || "", error: msg.error || "", edits: msg.edits != null ? String(msg.edits) : (msg.applied != null ? String(msg.applied) : ""), skipped: msg.skipped != null ? String(msg.skipped) : "", debug: msg.debug ? JSON.stringify(msg.debug) : "" });
+      const errorsJoined = Array.isArray(msg.errors) ? msg.errors.join(" | ") : "";
+      const q = new URLSearchParams({ jobId: msg.jobId, ok: String(!!msg.ok), frameId: msg.frameId || "", frameName: msg.frameName || "", error: msg.error || "", edits: msg.edits != null ? String(msg.edits) : (msg.applied != null ? String(msg.applied) : ""), skipped: msg.skipped != null ? String(msg.skipped) : "", debug: msg.debug ? JSON.stringify(msg.debug) : "", opErrors: errorsJoined });
       await fetch(base + "/api/figma-bridge/result?" + q.toString());
-      log(msg.ok ? ("✓ Created \"" + (msg.frameName || "screen") + "\" (" + (msg.sections || 0) + " sections)") : ("✗ " + msg.error));
+      if (!msg.ok) { log("✗ " + msg.error); return; }
+      // Redesign mode returns applied/errors; build-from-spec returns sections.
+      const summary = msg.sections != null
+        ? "(" + msg.sections + " sections)"
+        : "(" + (msg.applied || 0) + " ops applied" + (msg.skipped ? ", " + msg.skipped + " skipped" : "") + (Array.isArray(msg.errors) && msg.errors.length ? ", " + msg.errors.length + " errors" : "") + ")";
+      log("✓ Created \"" + (msg.frameName || "screen") + "\" " + summary);
+      if (Array.isArray(msg.errors) && msg.errors.length) {
+        for (const e of msg.errors.slice(0, 4)) log("  ⚠ " + e);
+      }
     } catch (e) { log("Failed to report result: " + e.message); }
   };
 

@@ -33,9 +33,11 @@ export function deterministicChecks(spec, findings) {
   if (nonAnnotation > 0 && (visualCount + structuralCount) / nonAnnotation < 0.5) {
     violations.push(`Only ${visualCount + structuralCount}/${nonAnnotation} non-annotation ops are visual or structural. Should be ≥60%. User asked for substantial design changes, not text edits.`);
   }
-  // 4b. Encourage substantial redesigns — reward structural additions
-  if (structuralCount === 0 && ops.length > 15) {
-    violations.push(`No insertSection or cloneAndAppend ops. A substantial redesign usually adds NEW structure (quick-action rows, hero blocks, service grids). Pure mutation is not enough.`);
+  // 4b. Substantial redesigns MUST add new structure. Pure mutation is insufficient regardless of op count.
+  if (structuralCount === 0) {
+    violations.push(`BLOCKING: 0 insertSection/cloneAndAppend ops. A redesign MUST add NEW structure — quick-action rows, hero blocks, service grids, empty-state variants. Recolor/reflow-only is rejected. Emit at least 2 structural ops.`);
+  } else if (structuralCount < 2 && ops.length > 10) {
+    violations.push(`Only ${structuralCount} structural op(s). Aim for 2–5 insertSection/cloneAndAppend ops to make the redesign substantial, not cosmetic.`);
   }
 
   // 5. Container fills — check selectors don't target generic wrappers
@@ -84,6 +86,8 @@ export async function llmReview({ spec, findings, providerFn, model }) {
 Return ONLY valid JSON: {"score": <0-10>, "verdict": "approved"|"needs_revision"|"rejected", "critique": "specific instructions for what to fix"}.
 
 Scoring rubric (start from 8/10 and deduct):
+- ZERO insertSection or cloneAndAppend ops → -5 (redesign MUST add structure, not just recolor)
+- Only 1 structural op with >10 total ops → -2 (still too cosmetic)
 - No high-severity findings addressed at all → -4
 - More than 3 high-severity findings uncovered → -2
 - setSize present → -3 (banned)
