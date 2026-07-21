@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useGraphStore } from "../store";
-import { openReport, exportReportPdf } from "../nodes/ReportGeneratorNode";
+import { openReport, exportReportPdf, exportReportDocx, exportReportPptx } from "../nodes/ReportGeneratorNode";
 import { ViewSwitch } from "./ViewSwitch";
 import { IconAttach, IconLightbulb, IconMic, IconSend, IconStop, IconCopy, IconThumbUp, IconThumbDown, IconStar, IconGlobe, IconSparkle, IconMerge } from "./Icons";
 
@@ -45,8 +45,13 @@ export function GuidedFlow({ onApply, onRun, onUXReview, onFigmaLink, onCanvas, 
   // loop-audit SSE path doesn't, so we run our own ticker while `processing`.
   const [localElapsed, setLocalElapsed] = useState(0);
   const runStartRef = useRef<number | null>(null);
-  // The current graph's report (in memory after a run) drives the chat CTAs.
-  const reportHtml = nodes?.find((n) => n.data.kind === "reportGenerator" && typeof n.data.output === "string" && n.data.output.length > 200)?.data.output as string | undefined;
+  // Report CTA only shows when THIS session's send() finished a report.
+  // The graph state is persisted, so we can't infer from node output alone —
+  // a stale report from a prior chat would flash the "Download report" bar
+  // before the user asks for anything.
+  const [reportReadyFor, setReportReadyFor] = useState<string | null>(null);
+  const reportHtmlRaw = nodes?.find((n) => n.data.kind === "reportGenerator" && typeof n.data.output === "string" && n.data.output.length > 200)?.data.output as string | undefined;
+  const reportHtml = reportReadyFor && reportReadyFor === activeChatId ? reportHtmlRaw : undefined;
   const activeChat = chats.find((chat) => chat.id === activeChatId);
   // Messages come straight from the store (single source of truth). This is why
   // the processing preview KEEPS showing and updating even when you switch to
@@ -237,22 +242,40 @@ export function GuidedFlow({ onApply, onRun, onUXReview, onFigmaLink, onCanvas, 
     setChatMessages([...currentMsgs(), { role: "user", text: brief }, ...preface] as any);
     setTail("⏳ Working…");
     const onProgress = (p: Progress) => setTail(`⏳ ${p.stage}… (${p.completed}/${p.total})`);
+    // Even a cached / instant answer should feel like the model is thinking —
+    // enforce a 3–5s "typing" hold so the response doesn't pop the moment
+    // the fetch resolves. Randomised so it doesn't feel mechanical.
+    const startedAt = Date.now();
+    const MIN_HOLD = 3000 + Math.floor(Math.random() * 2000);
+    const holdMinimum = async () => {
+      const wait = MIN_HOLD - (Date.now() - startedAt);
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    };
+    const startingChatId = activeChatId;
     try {
       let answer: string;
       // Loop-audit path: Figma design URL AND user opted in with "loop" keyword OR default for Figma URLs
       const wantsLoop = figmaIsDesign && !/no[\s-]?loop|single/i.test(brief);
+      let producedReport = false;
       if (auditTarget && wantsLoop && figmaIsDesign) {
         answer = await runLoopAudit(figmaUrl!, onProgress);
+        producedReport = true;
       } else if (auditTarget) {
         answer = await onUXReview(auditTarget, "", onProgress);
+        producedReport = true;
       } else {
         const res = await fetch("/api/build-workflow", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ task: brief }) });
         const graph = await res.json(); if (!res.ok) throw new Error(graph.error);
         answer = await onRun({ ...graph, task: brief }, onProgress);
       }
+      await holdMinimum();
       setTail(answer);
+      // Only reveal the report CTA if this send finished a real audit AND we're
+      // still on the chat that started it (user didn't switch away mid-run).
+      if (producedReport && startingChatId) setReportReadyFor(startingChatId);
     }
     catch (err) {
+      await holdMinimum();
       // A user-initiated Stop shows up as an aborted fetch — treat it as a clean stop.
       if (err instanceof DOMException && err.name === "AbortError") setTail("⏹ Stopped.");
       else setTail(err instanceof Error ? err.message : "I couldn’t create that workflow.");
@@ -322,7 +345,13 @@ export function GuidedFlow({ onApply, onRun, onUXReview, onFigmaLink, onCanvas, 
         <span className="preset-label">{p.label}</span>
       </button>
     ))}</div>}
-    <div className="chat-thread">{messages.map((message, index) => renderBubble(message, index))}{reportHtml && <div className="report-cta"><span>◆ UX Audit Report ready</span><button className="btn primary" onClick={() => exportReportPdf(reportHtml)}>⬇ Download PDF</button><button className="btn" onClick={() => openReport(reportHtml, false)}>Open HTML</button></div>}</div>
+    <div className="chat-thread">{messages.map((message, index) => renderBubble(message, index))}{reportHtml && <div className="report-cta">
+      <span>◆ UX Audit Report ready</span>
+      <button className="btn primary" onClick={() => openReport(reportHtml, false)}>Open</button>
+      <button className="btn" onClick={() => exportReportPdf(reportHtml)}>PDF</button>
+      <button className="btn" onClick={() => exportReportDocx()}>DOCX</button>
+      <button className="btn" onClick={() => exportReportPptx()}>PPTX</button>
+    </div>}</div>
     <div className="chat-composer dls-prompt-bar">
       <div className="composer-tools left">
         <button className="tool-btn" title="Attach"><IconAttach /></button>

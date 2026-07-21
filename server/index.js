@@ -9,7 +9,7 @@ import { captureFigmaDesign } from "./figmaCapture.js";
 import { buildAnalysisPrompt } from "./uxLenses.js";
 import { extractJSON, normalizeFinding } from "./uxUtil.js";
 import { mergeAudit } from "./uxReview.js";
-import { buildReportHTML } from "./report.js";
+import { buildReportHTML, buildReportDocx, buildReportPptx } from "./report.js";
 import { writeFigma, normalizeRedesignSpec } from "./figma.js";
 import { classifyFigmaTools } from "./figmaMcp.js";
 import { buildRedesignPrompt } from "./redesignPrompt.js";
@@ -725,6 +725,34 @@ app.post("/api/report-pdf", async (req, res) => {
     res.send(Buffer.from(pdf));
   } catch (err) {
     res.status(500).json({ error: err.message || "PDF generation failed" });
+  }
+});
+
+// Structured DOCX export — same 3-section report, editable in Word/Pages.
+app.post("/api/report-docx", async (req, res) => {
+  const { audit, title, pageContext, spec, push, verify, afterImageUrl, figmaFileKey } = req.body || {};
+  if (!audit || !Array.isArray(audit.findings)) return res.status(400).json({ error: "No audit provided" });
+  try {
+    const buf = await buildReportDocx(audit, title, pageContext, { spec, push, verify, afterImageUrl, figmaFileKey });
+    res.setHeader("content-type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    res.setHeader("content-disposition", "attachment; filename=ux-audit-report.docx");
+    res.send(Buffer.from(buf));
+  } catch (err) {
+    res.status(500).json({ error: err.message || "DOCX generation failed" });
+  }
+});
+
+// Structured PPTX export — cover + 3 slides, one per section.
+app.post("/api/report-pptx", async (req, res) => {
+  const { audit, title, pageContext, spec, push, verify, afterImageUrl, figmaFileKey } = req.body || {};
+  if (!audit || !Array.isArray(audit.findings)) return res.status(400).json({ error: "No audit provided" });
+  try {
+    const buf = await buildReportPptx(audit, title, pageContext, { spec, push, verify, afterImageUrl, figmaFileKey });
+    res.setHeader("content-type", "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+    res.setHeader("content-disposition", "attachment; filename=ux-audit-report.pptx");
+    res.send(Buffer.from(buf));
+  } catch (err) {
+    res.status(500).json({ error: err.message || "PPTX generation failed" });
   }
 });
 

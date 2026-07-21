@@ -4,6 +4,44 @@ import { NodeChrome } from "./NodeChrome";
 import { useGraphStore } from "../store";
 import type { ReportGeneratorData } from "../lib/types";
 
+// Pull structured audit + redesign context from the live graph so DOCX/PPTX
+// exports have the same data the HTML report was built from.
+function collectReportPayload() {
+  const nodes = useGraphStore.getState().nodes;
+  const parse = (raw: unknown) => { try { return typeof raw === "string" ? JSON.parse(raw) : raw; } catch { return null; } };
+  const audit = nodes.map((n) => parse(n.data.output)).find((v: any) => v && Array.isArray(v.findings));
+  const spec = nodes.map((n) => parse(n.data.output)).find((v: any) => v && Array.isArray(v.operations));
+  const push = nodes.map((n) => parse(n.data.output)).find((v: any) => v && (v.frameId || v.mode === "bridge"));
+  const verify = nodes.map((n) => parse(n.data.output)).find((v: any) => v && Array.isArray(v.gaps));
+  const pageContext = nodes.map((n) => parse(n.data.output)).find((v: any) => v && v.finalUrl && !Array.isArray(v.findings));
+  const reportNode = nodes.find((n) => n.data.kind === "reportGenerator");
+  const title = (reportNode?.data as any)?.title || "";
+  return { audit, spec, push, verify, pageContext, title };
+}
+
+async function downloadStructured(kind: "docx" | "pptx") {
+  const payload = collectReportPayload();
+  if (!payload.audit) { alert("Run the graph first — no audit data found."); return; }
+  try {
+    const res = await fetch(`/api/report-${kind}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error((await res.json()).error || `${kind.toUpperCase()} export failed`);
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `ux-audit-report.${kind}`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (err) {
+    alert((err as Error).message);
+  }
+}
+export const exportReportDocx = () => downloadStructured("docx");
+export const exportReportPptx = () => downloadStructured("pptx");
+
 // Opens generated report HTML in a new tab. Print-to-PDF (Cmd/Ctrl+P →
 // "Save as PDF") produces the presentation-grade PDF deliverable — the report
 // CSS is print-optimised. A native binary export would need a PDF lib; see
@@ -53,9 +91,11 @@ export function ReportGeneratorNode({ id, data }: { id: string; data: ReportGene
         onChange={(e) => updateNodeData(id, { title: e.target.value })}
       />
       {html ? (
-        <div className="node-row">
-          <button className="btn primary" onClick={() => openReport(html, false)}>Open report</button>
-          <button className="btn" onClick={() => exportReportPdf(html)}>Export PDF</button>
+        <div className="node-row" style={{ flexWrap: "wrap", gap: 6 }}>
+          <button className="btn primary" onClick={() => openReport(html, false)}>Open</button>
+          <button className="btn" onClick={() => exportReportPdf(html)}>PDF</button>
+          <button className="btn" onClick={() => exportReportDocx()}>DOCX</button>
+          <button className="btn" onClick={() => exportReportPptx()}>PPTX</button>
         </div>
       ) : (
         <span style={{ color: "var(--text-dim)", fontSize: 11 }}>

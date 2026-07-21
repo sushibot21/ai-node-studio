@@ -12,8 +12,10 @@
   "dependencies": {
     "@xyflow/react": "^12.3.6",
     "cors": "^2.8.5",
+    "docx": "^9.7.1",
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
+    "pptxgenjs": "^4.0.1",
     "puppeteer": "^25.3.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
