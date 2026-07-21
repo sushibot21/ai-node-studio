@@ -772,7 +772,19 @@ html, body, #root {
 }
 .iteration-history summary { cursor: pointer; color: var(--text-high); font-weight: 500; }
 .iteration-history details div { margin-top: var(--space-xs); line-height: 1.4; }
-.iteration-history pre { white-space: pre-wrap; font: inherit; color: var(--text-high); margin: var(--space-sm) 0 0; }
+.iteration-history pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 11px/1.4 ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--text-high);
+  margin: var(--space-sm) 0 0;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: var(--space-sm);
+  background: var(--bg-elevation-0);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+}
 /* Selected/final blocks use --positive-softest (light green) as background in BOTH themes,
    so text and inner elements must stay dark green regardless of theme — do NOT inherit --text-high. */
 .iteration-history .iteration-selected {
