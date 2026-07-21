@@ -307,9 +307,11 @@ export function GuidedFlow({ onApply, onRun, onUXReview, onFigmaLink, onCanvas, 
   // elapsed time, step count, and an estimated time-left.
   const renderThinking = (index: number) => {
     const parts = [THINKING_PHRASES[phraseIdx]];
-    if (running && totalNodes > 1) parts.push(`step ${Math.min(runProgress.completed + 1, totalNodes)} of ${totalNodes}`);
-    parts.push(`${fmtDuration(runProgress.elapsed || localElapsed)} elapsed`);
-    if (etaSeconds != null && etaSeconds > 0) parts.push(`~${fmtDuration(etaSeconds)} left`);
+    if (running && totalNodes > 1) {
+      const pct = Math.round((runProgress.completed / totalNodes) * 100);
+      parts.push(`${pct}% · step ${Math.min(runProgress.completed + 1, totalNodes)}/${totalNodes}`);
+    }
+    if (etaSeconds != null && etaSeconds > 0) parts.push(`~${fmtDuration(etaSeconds)} remaining`);
     return <div key={index} className="chat-bubble assistant thinking">
       <div className="thinking-head"><span className="thinking-dots"><i /><i /><i /></span>{stage || "Thinking…"}</div>
       <div className="thinking-sub">{parts.join(" · ")}</div>

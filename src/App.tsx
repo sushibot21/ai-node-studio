@@ -100,6 +100,9 @@ function Canvas() {
   const [running, setRunning] = useState(false);
   const [runProgress, setRunProgress] = useState({ completed: 0, current: "", elapsed: 0 });
   const runStartedAt = useRef(0);
+  // Elapsed at moment the last node finished — lets ETA subtract time-in-current-node
+  // so "remaining" ticks DOWN while a slow LLM node runs instead of climbing.
+  const elapsedAtLastCompletion = useRef(0);
   // Aborts the in-flight workflow run when the user hits Stop in the chat.
   const abortRef = useRef<AbortController | null>(null);
   // A Figma link supplied mid-run is queued here and written once the audit ends.
@@ -134,6 +137,7 @@ function Canvas() {
     abortRef.current = controller;
     setRunning(true);
     runStartedAt.current = Date.now();
+    elapsedAtLastCompletion.current = 0;
     setRunProgress({ completed: 0, current: "Preparing graph", elapsed: 0 });
     const total = Math.max(workflowNodes.length, 1);
     let done = 0;
@@ -152,6 +156,7 @@ function Canvas() {
         if (node) node.data = { ...node.data, status: "done", output, ...(refined?.kind === "iterativeRefiner" ? { history: refined.history } : {}) } as AnyNodeData;
         updateNodeData(id, { status: "done", output, ...(refined?.kind === "iterativeRefiner" ? { history: refined.history } : {}) });
         done += 1;
+        elapsedAtLastCompletion.current = Math.round((Date.now() - runStartedAt.current) / 1000);
         setRunProgress((progress) => ({ ...progress, completed: progress.completed + 1 }));
       },
       onNodeError: (id, error) => {
@@ -159,6 +164,7 @@ function Canvas() {
         if (node) node.data = { ...node.data, status: "error", error } as AnyNodeData;
         updateNodeData(id, { status: "error", error });
         done += 1;
+        elapsedAtLastCompletion.current = Math.round((Date.now() - runStartedAt.current) / 1000);
         setRunProgress((progress) => ({ ...progress, completed: progress.completed + 1 }));
       }
     }, controller.signal);
@@ -187,7 +193,16 @@ function Canvas() {
 
   const totalNodes = Math.max(nodes.length, 1);
   const progressPercent = Math.round((runProgress.completed / totalNodes) * 100);
-  const etaSeconds = runProgress.completed > 0 ? Math.max(0, Math.round((runProgress.elapsed / runProgress.completed) * (totalNodes - runProgress.completed))) : null;
+  // ETA = average COMPLETED-node duration × nodes left, minus time already
+  // spent inside the current in-flight node. This ticks DOWN as the current
+  // node runs and only re-baselines when the next node finishes.
+  const etaSeconds = (() => {
+    if (runProgress.completed <= 0) return null;
+    const avg = elapsedAtLastCompletion.current / runProgress.completed;
+    const timeInCurrent = Math.max(0, runProgress.elapsed - elapsedAtLastCompletion.current);
+    const nodesLeft = Math.max(0, totalNodes - runProgress.completed);
+    return Math.max(0, Math.round(avg * nodesLeft - timeInCurrent));
+  })();
 
   // One-click demo: loads a fully-completed autonomous UX Review of a Flipkart
   // product page (pre-computed, since Flipkart blocks live capture). Every node
@@ -340,9 +355,9 @@ function Canvas() {
           </button>
           <button className="btn" onClick={() => setShowAssistant(true)}>✦ Workflow Assistant</button>
           {running && <div className="run-status">
-            <div className="run-status-copy"><span className="run-pulse" />{runProgress.current} · {runProgress.completed}/{totalNodes}</div>
+            <div className="run-status-copy"><span className="run-pulse" />{runProgress.current} · {progressPercent}%</div>
             <div className="run-track"><div style={{ width: `${progressPercent}%` }} /></div>
-            <small>{runProgress.elapsed}s elapsed{etaSeconds !== null ? ` · ~${etaSeconds}s remaining` : " · estimating…"}</small>
+            <small>{etaSeconds !== null ? `~${etaSeconds}s remaining · ${runProgress.completed}/${totalNodes} steps` : `estimating… · ${runProgress.completed}/${totalNodes} steps`}</small>
           </div>}
           <label className="btn" style={{ marginBottom: 0 }}>
             Load
