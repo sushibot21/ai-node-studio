@@ -201,8 +201,8 @@ app.post("/api/merge-findings", (req, res) => {
 });
 
 // Renders the verified audit into a presentation-grade, print-to-PDF HTML report.
-app.post("/api/report", (req, res) => {
-  let { audit, narrative, title, pageContext } = req.body || {};
+app.post("/api/report", async (req, res) => {
+  let { audit, narrative, title, pageContext, spec, push, verify, afterImageUrl, figmaFileKey } = req.body || {};
   // Degrade gracefully: if the structured audit wasn't wired in but a narrative
   // JSON audit came through instead, recover it; else render a minimal report
   // rather than failing the whole pipeline.
@@ -216,7 +216,8 @@ app.post("/api/report", (req, res) => {
     }
   }
   try {
-    res.json({ html: buildReportHTML(audit, narrative, title, pageContext) });
+    const html = await buildReportHTML(audit, narrative, title, pageContext, { spec, push, verify, afterImageUrl, figmaFileKey });
+    res.json({ html });
   } catch (err) {
     res.status(500).json({ error: err.message || "Could not build report" });
   }

@@ -178,6 +178,11 @@ export function buildUXReviewGraph(url = "", figmaFileUrl = ""): { nodes: Node<A
   });
   connect(figmaLLMId, figmaId);
 
+  // Feed the redesign spec + Figma push result into the report so sections 2
+  // (Changes Applied) and 3 (Human Intervention) can populate.
+  connect(figmaLLMId, reportId);
+  connect(figmaId, reportId);
+
   nodes.push({
     id: figmaOutId,
     type: "output",

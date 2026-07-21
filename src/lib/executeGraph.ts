@@ -97,8 +97,13 @@ async function executeNode(data: AnyNodeData, inputs: string[]): Promise<string>
     // directly, so the report can render the annotated screenshot even though
     // the audit JSON is slimmed.
     const pageContext = parsed.find((v) => v && v.finalUrl && !Array.isArray(v.findings));
+    // Redesign spec (from the LLM node) and the figma push result (from figmaWrite),
+    // if wired in — they populate sections 2 and 3 of the concise report.
+    const spec = parsed.find((v) => v && Array.isArray(v.operations));
+    const push = parsed.find((v) => v && (v.frameId || v.mode === "bridge"));
+    const verify = parsed.find((v) => v && Array.isArray(v.gaps));
     const narrative = inputs.find((i) => !tryParseJSON(i));
-    const res = await runProviderNode({ audit, narrative, title: data.title, pageContext }, "/api/report");
+    const res = await runProviderNode({ audit, narrative, title: data.title, pageContext, spec, push, verify }, "/api/report");
     return res.html || "";
   }
   if (data.kind === "figmaWrite") {
