@@ -773,10 +773,16 @@ html, body, #root {
 .iteration-history summary { cursor: pointer; color: var(--text-high); font-weight: 500; }
 .iteration-history details div { margin-top: var(--space-xs); line-height: 1.4; }
 .iteration-history pre { white-space: pre-wrap; font: inherit; color: var(--text-high); margin: var(--space-sm) 0 0; }
+/* Selected/final blocks use --positive-softest (light green) as background in BOTH themes,
+   so text and inner elements must stay dark green regardless of theme — do NOT inherit --text-high. */
 .iteration-history .iteration-selected {
   border-color: var(--positive-default);
   background: var(--positive-softest);
+  color: var(--positive-strong);
 }
+.iteration-history .iteration-selected summary,
+.iteration-history .iteration-selected div,
+.iteration-history .iteration-selected pre { color: var(--positive-strong); }
 .final-choice {
   border: 2px solid var(--positive-default);
   border-radius: var(--radius-md);
@@ -785,9 +791,10 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   gap: var(--space-xs);
-  color: var(--text-high);
+  color: var(--positive-strong);
 }
-.final-choice span { color: var(--text-medium); font-size: 11px; line-height: 1.4; }
+.final-choice strong { color: var(--positive-strong); }
+.final-choice span { color: var(--positive-strong); opacity: 0.85; font-size: 11px; line-height: 1.4; }
 
 .node-output {
   background: var(--bg-elevation-0);
