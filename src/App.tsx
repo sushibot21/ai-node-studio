@@ -373,10 +373,13 @@ function Canvas() {
           nodeTypes={nodeTypes}
           colorMode="dark"
           fitView
+          minZoom={0.05}
+          maxZoom={2.5}
+          fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
         >
           <Background />
-          <Controls />
-          <MiniMap />
+          <Controls showFitView showZoom />
+          <MiniMap pannable zoomable />
         </ReactFlow>
       </div>
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
