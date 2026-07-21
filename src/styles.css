@@ -653,7 +653,18 @@ html, body, #root {
   0%, 80%, 100% { transform: scale(0.5); opacity: 0.4; }
   40% { transform: scale(1); opacity: 1; }
 }
-@media (max-width: 760px) {
+/* Progressive squeeze: slim rail before hiding it entirely. Chat history
+   staying visible matters more than the widest possible chat column. */
+@media (max-width: 1080px) {
+  .guided-shell { grid-template-columns: 240px minmax(0, 1fr); }
+  .guided-rail { padding: var(--space-lg) var(--space-md); }
+}
+@media (max-width: 860px) {
+  .guided-shell { grid-template-columns: 200px minmax(0, 1fr); }
+  .guided-rail { padding: var(--space-md) var(--space-sm); }
+  .guided-history { max-height: none; flex: 1 1 auto; min-height: 120px; }
+}
+@media (max-width: 600px) {
   .guided-shell { grid-template-columns: 1fr; }
   .guided-rail { display: none; }
   .guided-chat { width: min(100% - 32px, 820px); padding-top: 64px; }
@@ -1294,3 +1305,98 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   line-height: 1.4;
 }
 @media (max-width: 720px) { .preset-grid { grid-template-columns: 1fr; } }
+
+/* ==========================================================================
+   Look & feel revamp
+   Overrides applied at the end so token-based rules above stay authoritative.
+   ========================================================================== */
+
+/* Softer landing hero + ambient gradient wash behind the guided chat column. */
+.guided-chat {
+  background:
+    radial-gradient(1200px 500px at 20% -10%, rgba(62,77,237,0.08), transparent 60%),
+    radial-gradient(900px 400px at 100% 0%, rgba(255,138,76,0.06), transparent 60%);
+}
+:root[data-theme="dark"] .guided-chat,
+:root:not([data-theme="light"]) .guided-chat {
+  background:
+    radial-gradient(1200px 500px at 20% -10%, rgba(94,110,255,0.10), transparent 60%),
+    radial-gradient(900px 400px at 100% 0%, rgba(255,138,76,0.06), transparent 60%);
+}
+.guided-title span { font-weight: 800; }
+.guided-title h1 { font-size: 48px; letter-spacing: -0.035em; }
+.guided-title p { font-size: 17px; max-width: 60ch; }
+
+/* Chat rail: cleaner section label + item polish. */
+.guided-rail h2, .sidebar h2 { font-size: 10px; letter-spacing: 0.14em; color: var(--text-low); }
+.chat-item, .history-item {
+  border-radius: 10px;
+  padding: 8px 10px;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.chat-item:hover, .history-item:hover { transform: translateX(2px); }
+.chat-item.active { background: linear-gradient(90deg, rgba(62,77,237,0.14), rgba(62,77,237,0.04)); box-shadow: inset 2px 0 0 var(--primary-default); }
+
+/* Chat bubbles: warm the assistant tone, distinct user bubble. */
+.chat-bubble.assistant { padding: var(--space-md) 0; }
+.chat-bubble.assistant.dls-response { padding: var(--space-lg) 0 var(--space-sm); border-top: 1px solid var(--border-low); }
+.chat-bubble.assistant.dls-response:first-of-type { border-top: none; padding-top: 0; }
+.chat-bubble.user {
+  border-radius: 18px 18px 6px 18px;
+  padding: 12px 16px;
+  font-size: 14.5px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+}
+.dls-title { font-size: 20px; letter-spacing: -0.015em; margin-bottom: 6px; font-weight: 700; }
+
+/* Composer: floating card with soft shadow, brighter focus ring. */
+.chat-composer.dls-prompt-bar {
+  border-radius: 20px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.06);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.chat-composer.dls-prompt-bar:focus-within {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 32px rgba(62,77,237,0.14), 0 0 0 3px rgba(62,77,237,0.10);
+}
+.chat-composer .btn.primary, .send-btn {
+  border-radius: var(--radius-round);
+}
+
+/* Preset chips: refined typography + subtle icon-first hierarchy. */
+.preset-chip {
+  padding: 14px 16px;
+  border-radius: 14px;
+  gap: 12px;
+  font-size: 13.5px;
+  background: linear-gradient(180deg, var(--bg-elevation-1), var(--bg-elevation-0));
+}
+.preset-chip:hover { background: linear-gradient(180deg, var(--bg-elevation-1), rgba(62,77,237,0.05)); }
+.preset-icon { width: 34px; height: 34px; border-radius: 10px; }
+
+/* Report CTA: premium call-to-action band. */
+.report-cta {
+  background: linear-gradient(90deg, rgba(62,77,237,0.10), rgba(62,77,237,0.02));
+  border-color: rgba(62,77,237,0.28);
+  border-radius: 14px;
+  padding: 14px 16px;
+  gap: 10px;
+}
+.report-cta span { font-size: 11px; letter-spacing: 0.10em; }
+.report-cta .btn { border-radius: 999px; padding: 7px 14px; }
+.report-cta .btn.primary { box-shadow: 0 4px 12px rgba(62,77,237,0.22); }
+
+/* Buttons: unified hover motion. */
+.btn { transition: transform 0.12s ease, box-shadow 0.15s ease, background 0.15s ease, border-color 0.15s ease; }
+.btn:not(:disabled):hover { transform: translateY(-1px); }
+.btn.primary:not(:disabled):hover { box-shadow: 0 6px 18px rgba(62,77,237,0.28); }
+
+/* Sidebar rail: subtle top-of-rail glow separator. */
+.guided-rail { position: relative; }
+.guided-rail::before {
+  content: "";
+  position: absolute; inset: 0 auto 0 0; width: 1px;
+  background: linear-gradient(180deg, transparent, var(--border-medium) 15%, var(--border-medium) 85%, transparent);
+  right: 0; left: auto;
+}
+
