@@ -194,7 +194,7 @@ html, body, #root {
   transition: all 0.15s ease;
 }
 .chat-heading button:hover { color: var(--primary-default); border-color: var(--primary-default); background: var(--bg-elevation-1); }
-.chat-list { display: flex; flex-direction: column; gap: 2px; max-height: 180px; overflow-y: auto; }
+.chat-list { display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow-y: auto; flex-shrink: 0; }
 .chat-item {
   display: flex; align-items: center; gap: var(--space-sm);
   border-radius: var(--radius-md);
