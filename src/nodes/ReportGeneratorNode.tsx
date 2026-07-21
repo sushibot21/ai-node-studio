@@ -3,6 +3,7 @@ import { Handle, Position } from "@xyflow/react";
 import { NodeChrome } from "./NodeChrome";
 import { useGraphStore } from "../store";
 import type { ReportGeneratorData } from "../lib/types";
+import { IconPdf, IconDocx, IconPptx } from "../components/Icons";
 
 // Pull structured audit + redesign context from the live graph so DOCX/PPTX
 // exports have the same data the HTML report was built from.
@@ -92,9 +93,9 @@ export function ReportGeneratorNode({ id, data }: { id: string; data: ReportGene
       />
       <div className="node-row" style={{ flexWrap: "wrap", gap: 6, marginTop: 6 }}>
         <button className="btn primary" disabled={!html} onClick={() => html && openReport(html, false)}>Open</button>
-        <button className="btn" disabled={!html} onClick={() => html && exportReportPdf(html)}>PDF</button>
-        <button className="btn" disabled={!html} onClick={() => html && exportReportDocx()}>DOCX</button>
-        <button className="btn" disabled={!html} onClick={() => html && exportReportPptx()}>PPTX</button>
+        <button className="btn format-btn" disabled={!html} onClick={() => html && exportReportPdf(html)}><IconPdf /> PDF</button>
+        <button className="btn format-btn" disabled={!html} onClick={() => html && exportReportDocx()}><IconDocx /> DOCX</button>
+        <button className="btn format-btn" disabled={!html} onClick={() => html && exportReportPptx()}><IconPptx /> PPTX</button>
       </div>
       {!html && (
         <span style={{ color: "var(--text-dim)", fontSize: 11, marginTop: 6, display: "block" }}>

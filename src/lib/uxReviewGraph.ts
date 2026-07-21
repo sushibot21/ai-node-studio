@@ -10,8 +10,14 @@ import { layoutGraph } from "./layoutGraph";
 // The reasoning nodes default to Anthropic Claude — it's vision-capable (so the
 // analysis is grounded in the captured screenshot) and gives the strongest
 // findings. Switch a node to Ollama on the canvas for a fully-local run.
-const PROVIDER = "anthropic" as const;
-const MODEL = "claude-opus-4-7";
+// Analysis + heuristic scoring use local Gemma (fast + cheap) — Claude only
+// pays for the two steps where design taste actually matters: the final report
+// prose + the Figma redesign spec.
+const PROVIDER = "ollama" as const;
+const MODEL = "gemma3:4b";
+// Report generator narrative refiner keeps Claude — good prose matters here.
+const REPORT_PROVIDER = "anthropic" as const;
+const REPORT_MODEL = "claude-opus-4-7";
 
 // The redesign reasoning is Claude's job (Anthropic API), per the native
 // Claude + Figma MCP architecture. It only reasons + emits a spec — it never

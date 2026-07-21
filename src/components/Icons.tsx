@@ -86,3 +86,16 @@ export const IconStar = ({ size }: P) => (
 export const IconCheck = ({ size }: P) => (
   <svg {...base(size)}><path d="M4 10.5l4 4 8-8" /></svg>
 );
+
+// File-format badges — brand-tinted document silhouettes with the format label.
+// Fill is the format's canonical color; text stays white for contrast.
+const FormatBadge = ({ label, color, size = 16 }: { label: string; color: string; size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+    <path d="M4 2h8l4 4v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" fill={color} />
+    <path d="M12 2v4h4" fill="rgba(255,255,255,0.28)" />
+    <text x="10" y="15" textAnchor="middle" fontSize="5.4" fontWeight="700" fontFamily="-apple-system, Segoe UI, sans-serif" fill="#fff" letterSpacing="0.02em">{label}</text>
+  </svg>
+);
+export const IconPdf = (p: P) => <FormatBadge label="PDF" color="#E63946" size={p.size} />;
+export const IconDocx = (p: P) => <FormatBadge label="DOC" color="#2B579A" size={p.size} />;
+export const IconPptx = (p: P) => <FormatBadge label="PPT" color="#D24726" size={p.size} />;

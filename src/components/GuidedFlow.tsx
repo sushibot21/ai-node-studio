@@ -3,7 +3,7 @@ import { useGraphStore } from "../store";
 import { openReport, exportReportPdf, exportReportDocx, exportReportPptx } from "../nodes/ReportGeneratorNode";
 import { ViewSwitch } from "./ViewSwitch";
 import { buildUXReviewGraph } from "../lib/uxReviewGraph";
-import { IconAttach, IconLightbulb, IconMic, IconSend, IconStop, IconCopy, IconThumbUp, IconThumbDown, IconStar, IconGlobe, IconSparkle, IconMerge } from "./Icons";
+import { IconAttach, IconLightbulb, IconMic, IconSend, IconStop, IconCopy, IconThumbUp, IconThumbDown, IconStar, IconGlobe, IconSparkle, IconMerge, IconPdf, IconDocx, IconPptx } from "./Icons";
 
 // Rotating status lines shown while the model works, so the wait reads as
 // active "thinking" rather than a frozen spinner. The concrete pipeline stage
@@ -359,9 +359,9 @@ export function GuidedFlow({ onApply, onRun, onUXReview, onFigmaLink, onCanvas, 
     <div className="chat-thread">{messages.map((message, index) => renderBubble(message, index))}{reportHtml && <div className="report-cta">
       <span>◆ UX Audit Report ready</span>
       <button className="btn primary" onClick={() => openReport(reportHtml, false)}>Open</button>
-      <button className="btn" onClick={() => exportReportPdf(reportHtml)}>PDF</button>
-      <button className="btn" onClick={() => exportReportDocx()}>DOCX</button>
-      <button className="btn" onClick={() => exportReportPptx()}>PPTX</button>
+      <button className="btn format-btn" onClick={() => exportReportPdf(reportHtml)}><IconPdf /> PDF</button>
+      <button className="btn format-btn" onClick={() => exportReportDocx()}><IconDocx /> DOCX</button>
+      <button className="btn format-btn" onClick={() => exportReportPptx()}><IconPptx /> PPTX</button>
     </div>}</div>
     <div className="chat-composer dls-prompt-bar">
       <div className="composer-tools left">

@@ -14,6 +14,7 @@ import { writeFigma, normalizeRedesignSpec } from "./figma.js";
 import { classifyFigmaTools } from "./figmaMcp.js";
 import { buildRedesignPrompt } from "./redesignPrompt.js";
 import { governRedesignSpec } from "./governance.js";
+import { loadSkills, REDESIGN_SKILLS } from "./skills.js";
 
 const app = express();
 app.use(cors());
@@ -389,8 +390,21 @@ app.post("/api/govern-generate", async (req, res) => {
 // Streams progress via Server-Sent Events.
 // Input: { figmaUrl, provider?, model?, maxIterations?, targetScore? }
 app.post("/api/loop-audit", async (req, res) => {
-  const { figmaUrl, provider = "anthropic", model = "claude-opus-4-7",
-    maxIterations = 3, targetScore = 7 } = req.body || {};
+  // Split provider routing: heuristic (analysis + governance + verify) runs on
+  // local Gemma by default; design (redesign spec) runs on Claude — the two
+  // steps where taste actually pays for the API call.
+  const {
+    figmaUrl,
+    heuristicProvider = "ollama", heuristicModel = "gemma3:4b",
+    designProvider = "anthropic", designModel = "claude-opus-4-7",
+    // Back-compat: `provider` / `model` still supported as the design pair.
+    provider, model,
+    maxIterations = 3, targetScore = 7
+  } = req.body || {};
+  const designP = provider || designProvider;
+  const designM = model || designModel;
+  const heuristicP = heuristicProvider;
+  const heuristicM = heuristicModel;
   if (!figmaUrl) return res.status(400).json({ error: "figmaUrl required" });
 
   // SSE headers
@@ -425,11 +439,14 @@ app.post("/api/loop-audit", async (req, res) => {
       ["contentReadability", "designConsistency", "cognitiveLoad", "mobileUX"],
       ["informationArchitecture", "interactionDesign", "progressiveDisclosure", "recognitionRecall"]
     ];
-    const fn = PROVIDERS[provider];
+    const heuristicFn = PROVIDERS[heuristicP];
+    const designFn = PROVIDERS[designP];
+    if (!heuristicFn) throw new Error(`Unknown heuristic provider: ${heuristicP}`);
+    if (!designFn) throw new Error(`Unknown design provider: ${designP}`);
     const analyses = await Promise.all(lensSets.map(async (lenses) => {
       const prompt = buildAnalysisPrompt(lenses, pageContext);
-      const result = await fn({
-        model, temperature: 0.4,
+      const result = await heuristicFn({
+        model: heuristicM, temperature: 0.4,
         systemPrompt: "You are a meticulous senior UX researcher. Return only valid JSON.",
         input: prompt,
         image: pageContext?.viewportScreenshot || pageContext?.screenshot
@@ -445,6 +462,14 @@ app.post("/api/loop-audit", async (req, res) => {
     // Stage 3: merge / dedup
     const audit = mergeAudit(analyses, pageContext);
     emit("stage", { name: "merge", status: "done", uniqueFindings: audit.findings.length, score: audit.overallScore });
+
+    // Load design-taste skills once (cached 24h). Injected into the redesign
+    // system prompt so Claude has apple-design + emil-design-eng guidance
+    // before it emits Figma ops.
+    const skillsText = await loadSkills(REDESIGN_SKILLS);
+    const skillsBlock = skillsText
+      ? `\n\n## DESIGN SKILLS (read before generating operations — these encode the taste you're being paid for)\n\n${skillsText}\n\n---\n\nApply these principles when choosing colors, spacing, radii, and structural additions.`
+      : "";
 
     // Outer loop
     let iterationFindings = audit.findings.slice(0, 15);
@@ -482,7 +507,7 @@ app.post("/api/loop-audit", async (req, res) => {
       for (let govAttempt = 1; govAttempt <= MAX_GOV_ATTEMPTS; govAttempt++) {
         emit("governance", { iteration: iter, attempt: govAttempt, of: MAX_GOV_ATTEMPTS, status: "generating" });
         const revisionNote = critique ? `\n\n## GOVERNANCE CRITIQUE FROM PRIOR ATTEMPT (address these BEFORE producing new JSON):\n${critique}\n\nRegenerate the operations addressing every point above. Do NOT repeat the same mistakes.` : "";
-        const genResult = await fn({ model, temperature: 0.2, systemPrompt: genSystem, input: genUser + historyBlock + revisionNote });
+        const genResult = await designFn({ model: designM, temperature: 0.2, systemPrompt: genSystem + skillsBlock, input: genUser + historyBlock + revisionNote });
         spec = extractJSON(genResult.text);
         if (!spec || !spec.operations) {
           govLog.push({ attempt: govAttempt, error: "invalid JSON" });
@@ -492,7 +517,7 @@ app.post("/api/loop-audit", async (req, res) => {
         }
         // Review
         emit("governance", { iteration: iter, attempt: govAttempt, status: "reviewing", ops: spec.operations.length });
-        const gov = await governRedesignSpec({ spec, findings: iterationFindings, providerFn: fn, model, minScore: 6 });
+        const gov = await governRedesignSpec({ spec, findings: iterationFindings, providerFn: heuristicFn, model: heuristicM, minScore: 6 });
         govLog.push({ attempt: govAttempt, ops: spec.operations.length, score: gov.score, verdict: gov.verdict, approved: gov.approved, violations: gov.violations.length });
         emit("governance", { iteration: iter, attempt: govAttempt, status: gov.approved ? "approved" : "rejected", score: gov.score, verdict: gov.verdict, violations: gov.violations.length });
         console.log(`[loop-audit iter ${iter}] gov attempt ${govAttempt}: ${spec.operations.length} ops, score ${gov.score}/10, verdict ${gov.verdict}`);
@@ -528,8 +553,8 @@ app.post("/api/loop-audit", async (req, res) => {
       const buf = Buffer.from(await (await fetch(shotUrl)).arrayBuffer());
       const dataUrl = `data:image/png;base64,${buf.toString("base64")}`;
 
-      const verifyResult = await fn({
-        model, temperature: 0.1,
+      const verifyResult = await heuristicFn({
+        model: heuristicM, temperature: 0.1,
         systemPrompt: `You are a UX verifier. Return ONLY valid JSON: {"score": <0-10>, "verdict": "pass"|"fail"|"partial", "resolvedCount": N, "gaps": ["specific finding still visible"], "recommendations": ["fix for next iteration"]}. Score >= ${targetScore} = pass.`,
         input: `Original findings:\n${findingsList}\n\nJudge redesign visually. Return JSON verdict.`,
         image: dataUrl

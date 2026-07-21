@@ -1380,6 +1380,9 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 .report-cta span { font-size: 11px; letter-spacing: 0.10em; }
 .report-cta .btn { border-radius: 999px; padding: 7px 14px; }
 .report-cta .btn.primary { box-shadow: 0 4px 12px rgba(62,77,237,0.22); }
+.format-btn { display: inline-flex; align-items: center; gap: 6px; padding-left: 8px; }
+.format-btn svg { flex-shrink: 0; }
+.format-btn:disabled svg { opacity: 0.5; }
 
 /* Buttons: unified hover motion. */
 .btn { transition: transform 0.12s ease, box-shadow 0.15s ease, background 0.15s ease, border-color 0.15s ease; }
