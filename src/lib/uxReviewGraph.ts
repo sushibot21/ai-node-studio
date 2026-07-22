@@ -174,6 +174,7 @@ export function buildUXReviewGraph(url = "", figmaFileUrl = ""): { nodes: Node<A
     data: { kind: "llm", label: "Claude redesign spec", provider: REDESIGN_PROVIDER, model: REDESIGN_MODEL, systemPrompt: FIGMA_SYSTEM_PROMPT, temperature: 0.4 }
   });
   connect(mergeId, figmaLLMId);
+  connect(refinerId, figmaLLMId); // use REFINED findings for the redesign spec, not just raw merge
   connect(mergeId, figmaId); // audit context (text inventory) for resolving patch edits
 
   nodes.push({

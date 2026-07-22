@@ -224,9 +224,27 @@ export function GuidedFlow({ onApply, onRun, onUXReview, onFigmaLink, onCanvas, 
     } catch { /* non-blocking */ }
   };
 
+  // Parse /loop prefix. Forms:
+  //   /loop <brief>              → up to 3 iterations, goal = brief
+  //   /loop 5 <brief>            → up to 5 iterations
+  //   /loop <goal> :: <brief>    → explicit goal, up to 3 iterations
+  //   /loop 5 <goal> :: <brief>  → explicit goal + iter cap
+  const parseLoop = (raw: string): { loop: boolean; maxIter: number; goal: string; brief: string } => {
+    const m = raw.match(/^\/loop\b\s*(?:(\d{1,2})\s+)?(.*)$/is);
+    if (!m) return { loop: false, maxIter: 1, goal: "", brief: raw };
+    const maxIter = Math.min(10, Math.max(1, Number(m[1]) || 3));
+    const rest = m[2].trim();
+    const [goalPart, briefPart] = rest.split(/\s*::\s*/, 2);
+    const brief = briefPart != null ? briefPart.trim() : goalPart;
+    const goal = briefPart != null ? goalPart.trim() : brief;
+    return { loop: true, maxIter, goal, brief };
+  };
+
   const send = async () => {
-    const brief = task.trim();
-    if (!brief) return;
+    const rawTask = task.trim();
+    if (!rawTask) return;
+    const parsed = parseLoop(rawTask);
+    const brief = parsed.brief;
     // Fire auto-rename in background — non-blocking so send stays snappy.
     if (activeChatId) void autoTitleFromFirstMessage(activeChatId, brief);
     const webUrl = findUrl(brief);                       // first non-figma http URL
@@ -266,16 +284,49 @@ export function GuidedFlow({ onApply, onRun, onUXReview, onFigmaLink, onCanvas, 
       // Loop-audit path: Figma design URL AND user opted in with "loop" keyword OR default for Figma URLs
       const wantsLoop = figmaIsDesign && !/no[\s-]?loop|single/i.test(brief);
       let producedReport = false;
-      if (auditTarget && wantsLoop && figmaIsDesign) {
-        answer = await runLoopAudit(figmaUrl!, onProgress);
-        producedReport = true;
-      } else if (auditTarget) {
-        answer = await onUXReview(auditTarget, "", onProgress);
-        producedReport = true;
-      } else {
-        const res = await fetch("/api/build-workflow", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ task: brief }) });
+
+      // Single-iteration runner — reused by /loop wrapper below.
+      const runOnce = async (currentBrief: string): Promise<string> => {
+        if (auditTarget && wantsLoop && figmaIsDesign) {
+          producedReport = true;
+          return await runLoopAudit(figmaUrl!, onProgress);
+        }
+        if (auditTarget) {
+          producedReport = true;
+          return await onUXReview(auditTarget, "", onProgress);
+        }
+        const res = await fetch("/api/build-workflow", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ task: currentBrief }) });
         const graph = await res.json(); if (!res.ok) throw new Error(graph.error);
-        answer = await onRun({ ...graph, task: brief }, onProgress);
+        return await onRun({ ...graph, task: currentBrief }, onProgress);
+      };
+
+      if (parsed.loop) {
+        // /loop wrapper — run up to N times, evaluate each answer against the
+        // goal, feed the evaluator's feedback into the next iteration's brief.
+        let currentBrief = brief;
+        let lastAnswer = "";
+        const trace: string[] = [];
+        for (let iter = 1; iter <= parsed.maxIter; iter++) {
+          setTail(`⏳ Loop iteration ${iter}/${parsed.maxIter}…`);
+          lastAnswer = await runOnce(currentBrief);
+          try {
+            const evalRes = await fetch("/api/loop-eval", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ goal: parsed.goal, brief, answer: lastAnswer, iteration: iter })
+            });
+            const evalJson = await evalRes.json();
+            trace.push(`Iter ${iter}: score ${evalJson.score}/10 — ${evalJson.feedback || (evalJson.done ? "done" : "keep going")}`);
+            if (evalJson.done) break;
+            currentBrief = `${brief}\n\nPrior iteration ${iter} produced:\n${String(lastAnswer).slice(0, 1500)}\n\nEvaluator feedback: ${evalJson.feedback}\nAddress the feedback and try again.`;
+          } catch {
+            trace.push(`Iter ${iter}: evaluator error — stopping loop.`);
+            break;
+          }
+        }
+        answer = `${lastAnswer}\n\n---\nLoop trace:\n${trace.join("\n")}`;
+      } else {
+        answer = await runOnce(brief);
       }
       await holdMinimum();
       setTail(answer);

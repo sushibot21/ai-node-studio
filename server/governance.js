@@ -64,6 +64,58 @@ export function deterministicChecks(spec, findings) {
   if (annotationCount === 0) violations.push(`No addAnnotation ops. Each design change should have a rationale annotation so reviewers understand the WHY.`);
   if (annotationCount > ops.length * 0.6) violations.push(`Too many annotations (${annotationCount}) vs actual changes. Prioritize doing more, annotating less.`);
 
+  // 9. Semantic-duplicate insertSection — multiple nav-shaped titles cause the
+  // stacked "Quick Links + Popular Services + Featured" mess we saw on the
+  // Passport Seva redesign. At most ONE new nav-shaped section per spec.
+  const NAV_TITLE = /\b(quick|popular|services|featured|categories|browse|actions|links)\b/i;
+  const insertOps = ops.filter((op) => op.action === "insertSection");
+  const navInserts = insertOps.filter((op) => NAV_TITLE.test(op.value?.title || ""));
+  if (navInserts.length > 1) {
+    violations.push(`${navInserts.length} nav-shaped insertSection ops (${navInserts.map((o) => `"${o.value?.title}"`).join(", ")}). Emit at most ONE new nav/services section — the source page probably already has one.`);
+  }
+
+  // 10. insertSection must target a specific parent by name — appending into an
+  // unknown parent lets Figma drop the frame into a non-auto-layout container,
+  // where it collides with existing sections.
+  const orphanInserts = insertOps.filter((op) => !op.value?.targetParent);
+  if (orphanInserts.length) {
+    violations.push(`${orphanInserts.length} insertSection ops with no value.targetParent. Specify the parent frame by name (e.g. "Main", "Content", "Home") so the section lands inside an auto-layout container instead of colliding with existing content.`);
+  }
+
+  // 11. cloneAndAppend without meaningful replaceText — cloning a card 3× with
+  // the same text just triples visual duplicates. Every clone needs distinct copy.
+  const cloneOps = ops.filter((op) => op.action === "cloneAndAppend");
+  const clonesWithoutText = cloneOps.filter((op) => !op.value?.replaceText || String(op.value.replaceText).trim().length < 3);
+  if (clonesWithoutText.length) {
+    violations.push(`${clonesWithoutText.length} cloneAndAppend ops missing value.replaceText. Every clone must have distinct, meaningful text — otherwise you're just duplicating the same card.`);
+  }
+  // 11b. Identical replaceText across sibling clones (same selector.name) — same failure mode.
+  const cloneKey = (op) => `${op.selector?.name || ""}::${op.value?.replaceText || ""}`;
+  const cloneKeyCounts = cloneOps.reduce((acc, op) => { const k = cloneKey(op); acc[k] = (acc[k] || 0) + 1; return acc; }, {});
+  const dupClones = Object.entries(cloneKeyCounts).filter(([, n]) => n > 1);
+  if (dupClones.length) {
+    violations.push(`Duplicate clone-with-same-text detected (${dupClones.map(([k, n]) => `${k}×${n}`).join(", ")}). Each clone needs distinct replaceText.`);
+  }
+
+  // 12. insertSection palette guard — reject fills that pick a color out of the
+  // page's existing palette. If the source page is blue/white and you emit a
+  // yellow chip row, it reads as a broken graft.
+  // Cheap heuristic: allowed bg values are transparent, white, near-white, or
+  // any hex whose hue matches a color already used in another op. Since we
+  // don't have the page palette here, require bg to be either a neutral
+  // (#FFFFFF/F5-F9 grays) or match a fill used elsewhere in this spec.
+  const usedFills = new Set(ops.filter((op) => op.action === "setFill" && typeof op.value === "string").map((op) => String(op.value).toLowerCase().replace(/^#/, "")));
+  const NEUTRAL_BG = /^(fff(fff)?|f[5-9a-f]{5}|f[0-9a-f]f[0-9a-f]f[0-9a-f]|transparent)$/i;
+  const paletteViolations = insertOps.filter((op) => {
+    const bg = String(op.value?.bg || "").toLowerCase().replace(/^#/, "");
+    if (!bg) return false;
+    if (NEUTRAL_BG.test(bg)) return false;
+    return !usedFills.has(bg);
+  });
+  if (paletteViolations.length) {
+    violations.push(`${paletteViolations.length} insertSection ops use a bg color not seen elsewhere on the page (${paletteViolations.map((o) => `"${o.value?.title}": #${o.value.bg}`).join(", ")}). New sections must inherit the existing palette — use a neutral bg (#FFFFFF or a light gray) or a fill already used elsewhere in this spec.`);
+  }
+
   return { pass: violations.length === 0, violations };
 }
 
@@ -88,6 +140,10 @@ Return ONLY valid JSON: {"score": <0-10>, "verdict": "approved"|"needs_revision"
 Scoring rubric (start from 8/10 and deduct):
 - ZERO insertSection or cloneAndAppend ops → -5 (redesign MUST add structure, not just recolor)
 - Only 1 structural op with >10 total ops → -2 (still too cosmetic)
+- Multiple nav-shaped inserts (Quick/Popular/Services/Featured/Actions) → -3 (semantic duplication — page gets stacked parallel nav blocks)
+- insertSection with no value.targetParent → -2 per op (will collide with existing content, no auto-layout container to land in)
+- cloneAndAppend missing distinct replaceText → -2 per op (produces visual duplicates)
+- insertSection bg color that doesn't match the source palette (e.g. yellow chips on a blue/white page) → -3 (graft looks broken)
 - No high-severity findings addressed at all → -4
 - More than 3 high-severity findings uncovered → -2
 - setSize present → -3 (banned)

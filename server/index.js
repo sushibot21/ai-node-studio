@@ -781,6 +781,30 @@ app.post("/api/report-pptx", async (req, res) => {
   }
 });
 
+// Judge whether a loop iteration's answer already achieves the goal.
+// Returns { done, score, feedback } — feedback becomes the next iteration's
+// "critique" injected before the same brief so the model steers toward the goal.
+app.post("/api/loop-eval", async (req, res) => {
+  const { goal, brief, answer, iteration = 1, provider = "ollama", model = "gemma3:4b" } = req.body || {};
+  if (!goal && !brief) return res.status(400).json({ error: "goal or brief required" });
+  const fn = PROVIDERS[provider];
+  if (!fn) return res.status(400).json({ error: `Unknown provider: ${provider}` });
+  try {
+    const systemPrompt = `You judge whether a loop iteration has achieved a goal. Return ONLY valid JSON: {"done": true|false, "score": 0-10, "feedback": "one sentence — what's still missing or 'goal met'"}`;
+    const input = `Goal: ${goal || brief}
+Original brief: ${brief}
+Iteration ${iteration} answer:
+${String(answer || "").slice(0, 4000)}
+
+Judge. If score >= 8, done=true. Return JSON only.`;
+    const result = await fn({ model, temperature: 0.1, systemPrompt, input });
+    const parsed = extractJSON(result.text) || { done: false, score: 5, feedback: "Evaluator returned invalid JSON — treating as not done." };
+    res.json({ done: !!parsed.done, score: Number(parsed.score) || 0, feedback: parsed.feedback || "" });
+  } catch (err) {
+    res.status(500).json({ error: err.message || "loop-eval failed" });
+  }
+});
+
 app.post("/api/mcp/tools", async (req, res) => {
   try { res.json({ tools: await listMCPTools(req.body?.serverUrl) }); }
   catch (err) { res.status(400).json({ error: err.message || "Could not discover MCP tools" }); }

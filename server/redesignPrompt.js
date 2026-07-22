@@ -48,6 +48,35 @@ Example substantial ops:
 - Finding "no destination discovery" → insertSection titled "Popular Routes" appended to main page
 - Finding "empty right rail" → cloneAndAppend an existing card, replaceText to a new label
 
+## LESSONS FROM PAST FAILURES — read these BEFORE emitting insertSection / cloneAndAppend
+
+**A. NO SPATIAL COLLISION.** insertSection appends into a targetParent frame. If the parent
+   isn't auto-layout, your new section will OVERLAP the section that was there. Before you emit
+   insertSection, pick a targetParent that is a VERTICAL auto-layout container (the root page frame
+   usually is; horizontal chip rows are NOT). If you can't identify such a parent by name, DO NOT
+   emit insertSection — use cloneAndAppend on an existing card instead.
+
+**B. NO SEMANTIC DUPLICATION.** Before adding a new nav-shaped section (Quick Links, Quick Actions,
+   Popular Services, Services grid, Featured), scan the node tree for ANY existing frame whose name
+   or child text matches "quick", "popular", "services", "featured", "categories", "browse". If one
+   exists, DO NOT add another — the user will see three parallel nav blocks stacked. Instead:
+   cloneAndAppend cards INTO the existing frame, or setText to relabel it, or setFill to make it
+   more prominent. Adding a fourth nav block is ALWAYS wrong.
+
+**C. INHERIT THE EXISTING PALETTE.** New sections must use fills, corner radii, and stroke colors
+   that already appear elsewhere on the page. A yellow chip in a blue-and-white palette reads as
+   broken. Before choosing `bg` / `titleColor` / `chipBg`, pick from colors visible in the source
+   frame. When in doubt, use the page background color for `bg` (transparent look) or the primary
+   fill you see repeated on existing cards.
+
+**D. cloneAndAppend WITHOUT replaceText IS BROKEN.** If you clone a card three times to fill a rail,
+   every clone shows identical text. ALWAYS pass replaceText with meaningful, distinct copy per
+   clone. If you can't think of 4 distinct labels, only clone as many times as you have labels for.
+
+**E. STRUCTURAL OPS ARE REJECTED IF THEY CAUSE B or C.** Governance now inspects insertSection
+   ops for palette mismatch and semantic duplication. A rejected structural op counts as ZERO
+   structural ops — you'll fail the ≥2 requirement and the whole spec gets bounced.
+
 ## CRITICAL RULES — VIOLATIONS WILL BREAK THE DESIGN
 
 1. **NEVER add padding where none exists.** setSpacing padding is ONLY for adjusting existing padding values.
